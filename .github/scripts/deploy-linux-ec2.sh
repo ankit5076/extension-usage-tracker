@@ -105,16 +105,17 @@ ENV
 
 env_payload="$(base64 < "${env_file}" | tr -d '\n')"
 
-python3 - "${command_file}" <<PY
+CODEX_ENV_PAYLOAD="${env_payload}" python3 - "${command_file}" <<'PY'
 import json
+import os
 import sys
 
-aws_region = ${AWS_REGION@Q}
-aws_account_id = ${AWS_ACCOUNT_ID@Q}
-repository = ${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY@Q}
-image_tag = ${EXTENSION_USAGE_TRACKER_IMAGE_TAG@Q}
-public_path = ${EXTENSION_USAGE_TRACKER_PUBLIC_PATH@Q}
-env_payload = ${env_payload@Q}
+aws_region = os.environ["AWS_REGION"]
+aws_account_id = os.environ["AWS_ACCOUNT_ID"]
+repository = os.environ["EXTENSION_USAGE_TRACKER_ECR_REPOSITORY"]
+image_tag = os.environ["EXTENSION_USAGE_TRACKER_IMAGE_TAG"]
+public_path = os.environ["EXTENSION_USAGE_TRACKER_PUBLIC_PATH"]
+env_payload = os.environ["CODEX_ENV_PAYLOAD"]
 
 script = f"""set -euo pipefail
 APP_DIR=/opt/get-slot-now
