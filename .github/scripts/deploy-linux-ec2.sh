@@ -184,7 +184,7 @@ docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/api/health
 docker ps --filter "name=${{SERVICE_NAME}}"
 """
 
-command = "\\n".join([
+command = "\n".join([
     "cat > /tmp/extension-usage-tracker-deploy.sh <<'CODEX_SSM_SCRIPT'",
     script,
     "CODEX_SSM_SCRIPT",
