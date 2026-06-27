@@ -182,3 +182,5 @@ The GitHub deploy role and EC2 instance role also need ECR push/pull permissions
 ```text
 arn:aws:ecr:<AWS_REGION>:<AWS_ACCOUNT_ID>:repository/extension-usage-tracker
 ```
+
+See `docs/release-setup.md` for the exact remaining GitHub secrets, Dodo webhook URL, and AWS IAM additions.
