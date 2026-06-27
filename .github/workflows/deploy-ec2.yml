@@ -1,0 +1,160 @@
+name: Deploy extension usage tracker to EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: extension-usage-tracker-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build image and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 35
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID }}
+      DEPLOY_INSTANCE_TAG_NAME: ${{ vars.DEPLOY_INSTANCE_TAG_NAME || 'get-slot-now-prod' }}
+      EXTENSION_USAGE_TRACKER_ECR_REPOSITORY: ${{ vars.EXTENSION_USAGE_TRACKER_ECR_REPOSITORY || 'extension-usage-tracker' }}
+      EXTENSION_USAGE_TRACKER_IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
+      EXTENSION_USAGE_TRACKER_PUBLIC_PATH: ${{ vars.EXTENSION_USAGE_TRACKER_PUBLIC_PATH || '/extension-usage-tracker' }}
+      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://getslotnow.com/extension-usage-tracker' }}
+      ALLOWED_EXTENSION_ORIGINS: ${{ vars.ALLOWED_EXTENSION_ORIGINS }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_EXTENSION_SCHEMA: ${{ vars.SUPABASE_EXTENSION_SCHEMA || 'extension_access' }}
+      SUPABASE_EXTENSION_USERS_TABLE: ${{ vars.SUPABASE_EXTENSION_USERS_TABLE || 'users' }}
+      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'dodo' }}
+      LICENSE_SYNC_INTERVAL_MS: ${{ vars.LICENSE_SYNC_INTERVAL_MS || '900000' }}
+      DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'test_mode' }}
+      DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
+      DODO_PAYMENTS_WEBHOOK_KEY: ${{ secrets.DODO_PAYMENTS_WEBHOOK_KEY }}
+      DODO_PRODUCT_CANADA_CREDITS: ${{ vars.DODO_PRODUCT_CANADA_CREDITS }}
+      DODO_PRODUCT_UK_CREDITS: ${{ vars.DODO_PRODUCT_UK_CREDITS }}
+      DODO_PRODUCT_CANADA_PRO: ${{ vars.DODO_PRODUCT_CANADA_PRO }}
+      DODO_PRODUCT_UK_PRO: ${{ vars.DODO_PRODUCT_UK_PRO }}
+      CANADA_CREDITS_PER_PURCHASE: ${{ vars.CANADA_CREDITS_PER_PURCHASE || '5' }}
+      UK_CREDITS_PER_PURCHASE: ${{ vars.UK_CREDITS_PER_PURCHASE || '5' }}
+      PADDLE_ENVIRONMENT: ${{ vars.PADDLE_ENVIRONMENT || 'sandbox' }}
+      PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
+      PADDLE_WEBHOOK_SECRET: ${{ secrets.PADDLE_WEBHOOK_SECRET }}
+      PADDLE_PRICE_CANADA_CREDITS: ${{ vars.PADDLE_PRICE_CANADA_CREDITS }}
+      PADDLE_PRICE_UK_CREDITS: ${{ vars.PADDLE_PRICE_UK_CREDITS }}
+      PADDLE_PRICE_CANADA_PRO: ${{ vars.PADDLE_PRICE_CANADA_PRO }}
+      PADDLE_PRICE_UK_PRO: ${{ vars.PADDLE_PRICE_UK_PRO }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate deployment variables
+        run: |
+          missing=0
+          for name in AWS_ACCOUNT_ID AWS_REGION AWS_ROLE_ARN NEXT_PUBLIC_APP_URL SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required deployment value ${name}."
+              missing=1
+            fi
+          done
+
+          case "${PAYMENT_PROVIDER}" in
+            dodo)
+              for name in DODO_PAYMENTS_API_KEY DODO_PAYMENTS_WEBHOOK_KEY DODO_PRODUCT_CANADA_CREDITS DODO_PRODUCT_UK_CREDITS; do
+                if [ -z "${!name}" ]; then
+                  echo "::error::Missing required Dodo deployment value ${name}."
+                  missing=1
+                fi
+              done
+              ;;
+            paddle)
+              for name in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_PRICE_CANADA_CREDITS PADDLE_PRICE_UK_CREDITS; do
+                if [ -z "${!name}" ]; then
+                  echo "::error::Missing required Paddle deployment value ${name}."
+                  missing=1
+                fi
+              done
+              ;;
+            *)
+              echo "::error::PAYMENT_PROVIDER must be dodo or paddle."
+              missing=1
+              ;;
+          esac
+
+          exit "${missing}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Ensure ECR repository
+        run: |
+          if ! aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY}" >/dev/null 2>&1; then
+            aws ecr create-repository \
+              --region "${AWS_REGION}" \
+              --repository-name "${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY}" \
+              --image-scanning-configuration scanOnPush=true \
+              --encryption-configuration encryptionType=AES256
+            aws ecr put-lifecycle-policy \
+              --region "${AWS_REGION}" \
+              --repository-name "${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY}" \
+              --lifecycle-policy-text '{"rules":[{"rulePriority":1,"description":"Keep last 30 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":30},"action":{"type":"expire"}}]}'
+          fi
+
+      - name: Build and push image
+        run: |
+          image="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY}"
+          docker build \
+            --tag "${image}:${EXTENSION_USAGE_TRACKER_IMAGE_TAG}" \
+            --tag "${image}:latest" \
+            .
+          docker push "${image}:${EXTENSION_USAGE_TRACKER_IMAGE_TAG}"
+          docker push "${image}:latest"
+
+      - name: Deploy on EC2 through SSM
+        run: bash .github/scripts/deploy-linux-ec2.sh
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "### Extension usage tracker deployment complete"
+            echo ""
+            echo "- Image: ${EXTENSION_USAGE_TRACKER_ECR_REPOSITORY}:${EXTENSION_USAGE_TRACKER_IMAGE_TAG}"
+            echo "- Public path: ${NEXT_PUBLIC_APP_URL}"
+            echo "- Health: ${NEXT_PUBLIC_APP_URL}/api/health"
+          } >> "$GITHUB_STEP_SUMMARY"
