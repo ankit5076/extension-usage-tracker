@@ -158,7 +158,7 @@ docker run -d \\
 
 if ! grep -q "handle_path ${{PUBLIC_PATH}}/\\*" Caddyfile; then
   awk -v public_path="${{PUBLIC_PATH}}" '
-    /^\\thandle \\{/ && inserted == 0 {{
+    /^\\thandle \\{{/ && inserted == 0 {{
       print "\\thandle_path " public_path "/* {{"
       print "\\t\\treverse_proxy extension-usage-tracker:3000"
       print "\\t}}"
