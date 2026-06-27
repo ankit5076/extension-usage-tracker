@@ -129,7 +129,7 @@ Dodo webhook URL:
 https://getslotnow.com/extension-usage-tracker/api/payments/dodo/webhook
 ```
 
-GitHub repository variables:
+The workflow has defaults for the current EC2 host, Supabase project, Dodo product ids, and 5-credit pack sizing. Set repository variables only when overriding those defaults:
 
 ```text
 AWS_ACCOUNT_ID
@@ -155,12 +155,17 @@ EXTENSION_USAGE_TRACKER_PUBLIC_PATH
 EXTENSION_USAGE_TRACKER_ECR_REPOSITORY
 ```
 
-GitHub repository secrets:
+Required GitHub repository secrets for Dodo deployment:
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
 DODO_PAYMENTS_API_KEY
 DODO_PAYMENTS_WEBHOOK_KEY
+```
+
+Only set these Paddle secrets if `PAYMENT_PROVIDER=paddle`:
+
+```text
 PADDLE_API_KEY
 PADDLE_WEBHOOK_SECRET
 ```

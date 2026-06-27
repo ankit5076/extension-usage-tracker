@@ -21,17 +21,17 @@ jobs:
     environment: production
     timeout-minutes: 35
     env:
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID || '269985663760' }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-      DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN || 'arn:aws:iam::269985663760:role/GetSlotNowGitHubDeployRole' }}
+      DEPLOY_INSTANCE_ID: ${{ vars.DEPLOY_INSTANCE_ID || 'i-087a97129bcdc6fac' }}
       DEPLOY_INSTANCE_TAG_NAME: ${{ vars.DEPLOY_INSTANCE_TAG_NAME || 'get-slot-now-prod' }}
       EXTENSION_USAGE_TRACKER_ECR_REPOSITORY: ${{ vars.EXTENSION_USAGE_TRACKER_ECR_REPOSITORY || 'extension-usage-tracker' }}
       EXTENSION_USAGE_TRACKER_IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
       EXTENSION_USAGE_TRACKER_PUBLIC_PATH: ${{ vars.EXTENSION_USAGE_TRACKER_PUBLIC_PATH || '/extension-usage-tracker' }}
       NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'https://getslotnow.com/extension-usage-tracker' }}
       ALLOWED_EXTENSION_ORIGINS: ${{ vars.ALLOWED_EXTENSION_ORIGINS }}
-      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://vpxcmtuaaupbslhhstbo.supabase.co' }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_EXTENSION_SCHEMA: ${{ vars.SUPABASE_EXTENSION_SCHEMA || 'extension_access' }}
       SUPABASE_EXTENSION_USERS_TABLE: ${{ vars.SUPABASE_EXTENSION_USERS_TABLE || 'users' }}
@@ -40,8 +40,8 @@ jobs:
       DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'test_mode' }}
       DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
       DODO_PAYMENTS_WEBHOOK_KEY: ${{ secrets.DODO_PAYMENTS_WEBHOOK_KEY }}
-      DODO_PRODUCT_CANADA_CREDITS: ${{ vars.DODO_PRODUCT_CANADA_CREDITS }}
-      DODO_PRODUCT_UK_CREDITS: ${{ vars.DODO_PRODUCT_UK_CREDITS }}
+      DODO_PRODUCT_CANADA_CREDITS: ${{ vars.DODO_PRODUCT_CANADA_CREDITS || 'pdt_0Nhu9jdAB46VLQgwpPydJ' }}
+      DODO_PRODUCT_UK_CREDITS: ${{ vars.DODO_PRODUCT_UK_CREDITS || 'pdt_0Nhu9t8c32547wyNEtZTe' }}
       DODO_PRODUCT_CANADA_PRO: ${{ vars.DODO_PRODUCT_CANADA_PRO }}
       DODO_PRODUCT_UK_PRO: ${{ vars.DODO_PRODUCT_UK_PRO }}
       CANADA_CREDITS_PER_PURCHASE: ${{ vars.CANADA_CREDITS_PER_PURCHASE || '5' }}
