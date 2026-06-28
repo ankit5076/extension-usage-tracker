@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { appBasePath } from "@/lib/config";
+import { redirect } from "next/navigation";
+import { createCheckout } from "@/lib/license-service";
 import { productConfig } from "@/lib/products";
-import { CheckoutForm } from "./checkout-form";
 
 export const runtime = "nodejs";
 
@@ -17,14 +17,16 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   if (!product) notFound();
   const plan = query.purchaseType || query.plan;
   const initialPurchaseType = plan === "pro" ? "pro" : "access";
+  const checkout = await createCheckout(product.productId, { purchaseType: initialPurchaseType });
+  if (checkout.checkoutUrl) redirect(checkout.checkoutUrl);
 
   return (
-    <CheckoutForm
-      productId={product.productId}
-      extensionName={product.extensionName}
-      country={product.country}
-      initialPurchaseType={initialPurchaseType}
-      apiBasePath={appBasePath()}
-    />
+    <main className="checkout-shell">
+      <section className="checkout-panel" aria-labelledby="checkout-title">
+        <p className="checkout-kicker">{product.country} extension</p>
+        <h1 id="checkout-title">{product.extensionName}</h1>
+        <p className="checkout-copy">Unable to open payment checkout. Please try again from the extension.</p>
+      </section>
+    </main>
   );
 }

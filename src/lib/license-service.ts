@@ -137,7 +137,8 @@ export async function checkLicense(productId: string, amazonEmail: string): Prom
 
 async function upsertCheckoutUser(
   product: ProductConfig,
-  request: CheckoutRequest,
+  emailId: string,
+  amazonEmailId: string,
   paymentProviderId: PaymentProviderId,
   supabase = getSupabaseAdmin()
 ): Promise<ExtensionUser> {
@@ -146,8 +147,8 @@ async function upsertCheckoutUser(
       {
         product_id: product.productId,
         country: product.country,
-        email_id: normalizeEmail(request.emailId),
-        amazon_email_id: normalizeEmail(request.amazonEmailId),
+        email_id: normalizeEmail(emailId),
+        amazon_email_id: normalizeEmail(amazonEmailId),
         status: "active",
         payment_provider: paymentProviderId,
       },
@@ -162,29 +163,42 @@ export async function createCheckout(productId: string, request: CheckoutRequest
   const product = requireProduct(productId);
   const provider = defaultPaymentProvider();
   const purchase = purchaseConfig(product, request.purchaseType as PurchaseType, provider.id);
-  const user = await upsertCheckoutUser(product, request, provider.id);
+  const emailId = request.emailId ? normalizeEmail(request.emailId) : "";
+  const amazonEmailId = request.amazonEmailId ? normalizeEmail(request.amazonEmailId) : "";
+  const user = emailId && amazonEmailId
+    ? await upsertCheckoutUser(product, emailId, amazonEmailId, provider.id)
+    : null;
   const metadata: PaymentMetadata = {
     product_id: product.productId,
     country: product.country,
-    email_id: normalizeEmail(request.emailId),
-    amazon_email_id: normalizeEmail(request.amazonEmailId),
+    ...(emailId ? { email_id: emailId } : {}),
+    ...(amazonEmailId ? { amazon_email_id: amazonEmailId } : {}),
     purchase_type: purchase.purchaseType,
   };
   const session = await provider.createCheckout({
     product,
     purchase,
-    emailId: metadata.email_id,
-    amazonEmailId: metadata.amazon_email_id,
+    emailId,
+    amazonEmailId,
     metadata,
   });
-  const updated = await updateUser(user.id, {
-    payment_provider: provider.id,
-    payment_checkout_session_id: session.checkoutSessionId,
-    payment_id: session.paymentId || null,
-    payment_customer_id: session.customerId || user.payment_customer_id || null,
-    payment_subscription_id: session.subscriptionId || user.payment_subscription_id || null,
-  });
-  return responseFor(updated, "Open checkout to buy access.", session.checkoutUrl || "");
+  if (user) {
+    const updated = await updateUser(user.id, {
+      payment_provider: provider.id,
+      payment_checkout_session_id: session.checkoutSessionId,
+      payment_id: session.paymentId || null,
+      payment_customer_id: session.customerId || user.payment_customer_id || null,
+      payment_subscription_id: session.subscriptionId || user.payment_subscription_id || null,
+    });
+    return responseFor(updated, "Open checkout to buy access.", session.checkoutUrl || "");
+  }
+  return {
+    allowed: false,
+    isProUser: false,
+    checkoutUrl: session.checkoutUrl || "",
+    message: "Open checkout to buy access.",
+    syncIntervalMs: licenseSyncIntervalMs(),
+  };
 }
 
 function addDays(date: Date, days: number): Date {
@@ -221,14 +235,38 @@ export async function recordUsage(productId: string, request: UsageRequest): Pro
 }
 
 async function userForMetadata(metadata: PaymentMetadata): Promise<ExtensionUser | null> {
+  if (!metadata.amazon_email_id) return null;
   return findUser(metadata.product_id, metadata.amazon_email_id);
+}
+
+function emailsForPayment(event: PaymentWebhookEvent, metadata: PaymentMetadata): { emailId: string; amazonEmailId: string } | null {
+  const emailId = normalizeEmail(metadata.email_id || event.customerEmail || metadata.amazon_email_id || "");
+  const amazonEmailId = normalizeEmail(metadata.amazon_email_id || event.customerEmail || metadata.email_id || "");
+  return emailId && amazonEmailId ? { emailId, amazonEmailId } : null;
+}
+
+async function ensurePaidUser(
+  product: ProductConfig,
+  metadata: PaymentMetadata,
+  event: PaymentWebhookEvent
+): Promise<ExtensionUser | null> {
+  const emails = emailsForPayment(event, metadata);
+  if (!emails) return null;
+  const existing = await findUser(product.productId, emails.amazonEmailId);
+  if (existing) {
+    if (existing.email_id !== emails.emailId) {
+      return updateUser(existing.id, { email_id: emails.emailId });
+    }
+    return existing;
+  }
+  return upsertCheckoutUser(product, emails.emailId, emails.amazonEmailId, event.provider);
 }
 
 async function processPaymentSucceeded(event: PaymentWebhookEvent, metadata: PaymentMetadata): Promise<LicenseResponse> {
   const product = requireProduct(metadata.product_id);
   const purchase = purchaseConfig(product, metadata.purchase_type, event.provider);
-  const user = await userForMetadata(metadata);
-  if (!user) return denied("Amazon email is not registered for this extension.");
+  const user = await ensurePaidUser(product, metadata, event);
+  if (!user) return denied("Payment webhook is missing the customer or Amazon job-search email.");
   if (user.last_payment_event_id === event.eventId) {
     return responseFor(user, "Payment event already processed.");
   }

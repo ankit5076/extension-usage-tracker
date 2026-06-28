@@ -211,6 +211,41 @@ describe("checkout", () => {
     }));
   });
 
+  it("creates a Dodo checkout session without showing a local email form", async () => {
+    const rows: Row[] = [];
+    setSupabaseAdminForTests(fakeSupabase(rows));
+    const create = vi.fn(async () => ({
+      session_id: "cs_direct",
+      checkout_url: "https://checkout.dodo/direct",
+      payment_id: null,
+    }));
+    setDodoClientForTests({ checkoutSessions: { create } } as never);
+
+    const response = await createCheckout("amazon-warehouse-jobs-uk", {
+      purchaseType: "access",
+    });
+
+    expect(response.checkoutUrl).toBe("https://checkout.dodo/direct");
+    expect(rows).toHaveLength(0);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      product_cart: [{ product_id: "prod_uk_access", quantity: 1 }],
+      metadata: expect.objectContaining({
+        product_id: "amazon-warehouse-jobs-uk",
+        purchase_type: "access",
+      }),
+      custom_fields: [
+        expect.objectContaining({
+          key: "amazon_email_id",
+          field_type: "email",
+          required: true,
+        }),
+      ],
+    }));
+    expect(create).toHaveBeenCalledWith(expect.not.objectContaining({
+      customer: expect.anything(),
+    }));
+  });
+
   it("uses Paddle checkout through the same service method when configured", async () => {
     process.env.PAYMENT_PROVIDER = "paddle";
     resetPaymentProvidersForTests();
@@ -285,6 +320,7 @@ describe("webhooks", () => {
         payment_id: "pay_123",
         checkout_session_id: "cs_123",
         customer_id: "cus_123",
+        customer: { email: "buyer@example.com" },
         total_amount: 1000,
         currency: "gbp",
         metadata,
@@ -294,6 +330,7 @@ describe("webhooks", () => {
       type: "payment_succeeded",
       eventId: "payment.succeeded:pay_123",
       paymentId: "pay_123",
+      customerEmail: "buyer@example.com",
       metadata,
     });
 
@@ -340,6 +377,41 @@ describe("webhooks", () => {
     expect(rows[0].last_payment_access_days).toBe(30);
     expect(rows[0].last_payment_event_id).toBe("payment.succeeded:pay_123");
     expect(rows[0].payment_provider).toBe("dodo");
+  });
+
+  it("creates the paid access row from Dodo checkout emails when no row exists yet", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const rows: Row[] = [];
+    setSupabaseAdminForTests(fakeSupabase(rows));
+
+    await processPaymentWebhookEvent({
+      provider: "dodo",
+      eventId: "payment.succeeded:pay_direct",
+      type: "payment_succeeded",
+      paymentId: "pay_direct",
+      checkoutSessionId: "cs_direct",
+      customerId: "cus_direct",
+      customerEmail: "buyer@example.com",
+      amountCents: 1000,
+      currency: "gbp",
+      metadata: {
+        product_id: "amazon-warehouse-jobs-uk",
+        country: "UK",
+        amazon_email_id: "amazon@example.com",
+        purchase_type: "access",
+      },
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      product_id: "amazon-warehouse-jobs-uk",
+      email_id: "buyer@example.com",
+      amazon_email_id: "amazon@example.com",
+      access_expires_at: "2026-01-31T00:00:00.000Z",
+      payment_checkout_session_id: "cs_direct",
+      payment_customer_id: "cus_direct",
+    });
   });
 
   it("marks refunded rows as refunded", async () => {

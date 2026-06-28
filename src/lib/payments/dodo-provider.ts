@@ -15,11 +15,14 @@ interface DodoPaymentData {
   payment_id?: string | null;
   checkout_session_id?: string | null;
   customer_id?: string | null;
+  customer_email?: string | null;
   subscription_id?: string | null;
   customer?: { customer_id?: string | null; email?: string | null } | null;
   total_amount?: number | null;
   currency?: string | null;
   metadata?: Record<string, unknown> | null;
+  custom_fields?: unknown;
+  custom_field_responses?: unknown;
 }
 
 interface DodoRawEvent {
@@ -69,19 +72,50 @@ function dodoEventId(event: DodoRawEvent): string {
   return [event.type, data.payment_id || data.checkout_session_id || data.subscription_id || event.timestamp || "unknown"].join(":");
 }
 
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function customFieldValue(raw: unknown, key: string): string {
+  if (!raw) return "";
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      if (record.key === key || record.name === key) {
+        return textValue(record.value ?? record.response ?? record.text);
+      }
+    }
+    return "";
+  }
+  if (typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    return textValue(record[key]);
+  }
+  return "";
+}
+
 export function normalizeDodoWebhookEvent(event: DodoRawEvent): PaymentWebhookEvent | null {
   const type = normalizeType(event.type);
   if (!type) return null;
   const data = dataFor(event);
   const metadata = PaymentMetadataSchema.safeParse(data.metadata || {});
+  const amazonEmailFromCustomField =
+    customFieldValue(data.custom_field_responses, "amazon_email_id") ||
+    customFieldValue(data.custom_fields, "amazon_email_id");
+  const nextMetadata = metadata.success ? metadata.data : null;
+  if (nextMetadata && !nextMetadata.amazon_email_id && amazonEmailFromCustomField) {
+    nextMetadata.amazon_email_id = amazonEmailFromCustomField.toLowerCase();
+  }
   return {
     provider: "dodo",
     eventId: dodoEventId(event),
     type,
-    metadata: metadata.success ? metadata.data : null,
+    metadata: nextMetadata,
     paymentId: data.payment_id || null,
     checkoutSessionId: data.checkout_session_id || null,
     customerId: data.customer_id || data.customer?.customer_id || null,
+    customerEmail: data.customer?.email || data.customer_email || null,
     subscriptionId: data.subscription_id || null,
     amountCents: data.total_amount ?? null,
     currency: data.currency || null,
@@ -94,14 +128,27 @@ export class DodoPaymentProvider implements PaymentProvider {
   async createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
     const params: CheckoutSessionCreateParams = {
       product_cart: [{ product_id: input.purchase.providerPriceId, quantity: 1 }],
-      customer: {
-        email: input.emailId,
-        name: input.emailId,
-      },
       metadata: input.metadata,
       return_url: checkoutReturnUrl(),
       cancel_url: checkoutReturnUrl(),
     };
+    if (input.emailId) {
+      params.customer = {
+        email: input.emailId,
+        name: input.emailId,
+      };
+    }
+    if (!input.amazonEmailId) {
+      params.custom_fields = [
+        {
+          field_type: "email",
+          key: "amazon_email_id",
+          label: "Amazon job-search email",
+          placeholder: "amazon@example.com",
+          required: true,
+        },
+      ];
+    }
     const session = await getDodoClient().checkoutSessions.create(params);
     return {
       checkoutUrl: session.checkout_url || "",

@@ -69,6 +69,7 @@ export function normalizePaddleWebhookEvent(event: PaddleRawEvent): PaymentWebho
     paymentId: stringValue(data.id),
     checkoutSessionId: stringValue(data.id),
     customerId: stringValue(data.customerId) || stringValue(data.customer_id),
+    customerEmail: stringValue(data.customerEmail) || stringValue(data.customer_email),
     subscriptionId: stringValue(data.subscriptionId) || stringValue(data.subscription_id),
     amountCents: numberValue(totals.total),
     currency: stringValue(data.currencyCode) || stringValue(data.currency_code),

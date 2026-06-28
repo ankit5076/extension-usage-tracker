@@ -4,10 +4,12 @@ const email = z.string().trim().toLowerCase().email();
 const purchaseType = z.enum(["access", "pro"]).default("access");
 
 export const CheckoutRequestSchema = z.object({
-  emailId: email,
-  amazonEmailId: email,
+  emailId: email.optional(),
+  amazonEmailId: email.optional(),
   purchaseType,
 });
+
+const optionalMetadataEmail = z.string().trim().toLowerCase().email().optional();
 
 export const UsageRequestSchema = z.object({
   emailId: email.optional(),
@@ -21,8 +23,8 @@ export const UsageRequestSchema = z.object({
 export const PaymentMetadataSchema = z.object({
   product_id: z.string().trim().min(1),
   country: z.string().trim().min(1),
-  email_id: email,
-  amazon_email_id: email,
+  email_id: optionalMetadataEmail,
+  amazon_email_id: optionalMetadataEmail,
   purchase_type: purchaseType,
 });
 

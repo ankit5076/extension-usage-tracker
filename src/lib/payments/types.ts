@@ -6,8 +6,8 @@ export type PaymentProviderId = "dodo" | "paddle";
 export interface CreateCheckoutInput {
   product: ProductConfig;
   purchase: PurchaseConfig;
-  emailId: string;
-  amazonEmailId: string;
+  emailId?: string;
+  amazonEmailId?: string;
   metadata: PaymentMetadata;
 }
 
@@ -34,6 +34,7 @@ export interface PaymentWebhookEvent {
   paymentId?: string | null;
   checkoutSessionId?: string | null;
   customerId?: string | null;
+  customerEmail?: string | null;
   subscriptionId?: string | null;
   amountCents?: number | null;
   currency?: string | null;
