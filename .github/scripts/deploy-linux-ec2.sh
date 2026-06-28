@@ -78,6 +78,7 @@ trap 'rm -f "${env_file}" "${command_file}"' EXIT
 
 cat > "${env_file}" <<ENV
 NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+NEXT_PUBLIC_APP_BASE_PATH=${EXTENSION_USAGE_TRACKER_PUBLIC_PATH}
 ALLOWED_EXTENSION_ORIGINS=${ALLOWED_EXTENSION_ORIGINS:-}
 SUPABASE_URL=${SUPABASE_URL}
 SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
@@ -181,6 +182,8 @@ for attempt in $(seq 1 30); do
 done
 
 docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/checkout/amazon-warehouse-jobs-canada?plan=credits').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/checkout/amazon-warehouse-jobs-uk?plan=pro').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 docker ps --filter "name=${{SERVICE_NAME}}"
 """
 

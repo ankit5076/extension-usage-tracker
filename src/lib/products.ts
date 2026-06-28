@@ -12,13 +12,15 @@ export interface ProductConfig {
   dodoProProductId: string;
   paddleCreditsPriceId: string;
   paddleProPriceId: string;
-  creditsPerPurchase: number;
+  accessDaysPerPurchase: number;
+  proAccessDaysPerPurchase: number;
 }
 
 export interface PurchaseConfig {
   providerPriceId: string;
   purchaseType: PurchaseType;
   credits: number;
+  accessDays: number;
   isPro: boolean;
 }
 
@@ -32,7 +34,8 @@ function products(): Record<ProductId, ProductConfig> {
       dodoProProductId: optionalEnv("DODO_PRODUCT_CANADA_PRO"),
       paddleCreditsPriceId: optionalEnv("PADDLE_PRICE_CANADA_CREDITS"),
       paddleProPriceId: optionalEnv("PADDLE_PRICE_CANADA_PRO"),
-      creditsPerPurchase: numericEnv("CANADA_CREDITS_PER_PURCHASE", 5),
+      accessDaysPerPurchase: numericEnv("CANADA_ACCESS_DAYS_PER_PURCHASE", numericEnv("ACCESS_DAYS_PER_PURCHASE", 30)),
+      proAccessDaysPerPurchase: numericEnv("CANADA_PRO_ACCESS_DAYS_PER_PURCHASE", numericEnv("PRO_ACCESS_DAYS_PER_PURCHASE", 365)),
     },
     "amazon-warehouse-jobs-uk": {
       productId: "amazon-warehouse-jobs-uk",
@@ -42,7 +45,8 @@ function products(): Record<ProductId, ProductConfig> {
       dodoProProductId: optionalEnv("DODO_PRODUCT_UK_PRO"),
       paddleCreditsPriceId: optionalEnv("PADDLE_PRICE_UK_CREDITS"),
       paddleProPriceId: optionalEnv("PADDLE_PRICE_UK_PRO"),
-      creditsPerPurchase: numericEnv("UK_CREDITS_PER_PURCHASE", 5),
+      accessDaysPerPurchase: numericEnv("UK_ACCESS_DAYS_PER_PURCHASE", numericEnv("ACCESS_DAYS_PER_PURCHASE", 30)),
+      proAccessDaysPerPurchase: numericEnv("UK_PRO_ACCESS_DAYS_PER_PURCHASE", numericEnv("PRO_ACCESS_DAYS_PER_PURCHASE", 365)),
     },
   };
 }
@@ -77,7 +81,8 @@ export function purchaseConfig(
   return {
     providerPriceId,
     purchaseType,
-    credits: purchaseType === "pro" ? 0 : product.creditsPerPurchase,
+    credits: 0,
+    accessDays: purchaseType === "pro" ? product.proAccessDaysPerPurchase : product.accessDaysPerPurchase,
     isPro: purchaseType === "pro",
   };
 }

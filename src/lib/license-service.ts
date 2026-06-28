@@ -15,6 +15,7 @@ export interface ExtensionUser {
   status: "active" | "disabled" | "refunded" | "blocked";
   credits_available: number;
   is_pro_user: boolean;
+  access_expires_at?: string | null;
   payment_provider?: string | null;
   payment_customer_id?: string | null;
   payment_checkout_session_id?: string | null;
@@ -24,6 +25,7 @@ export interface ExtensionUser {
   last_payment_amount_cents?: number | null;
   last_payment_currency?: string | null;
   last_payment_credits?: number | null;
+  last_payment_access_days?: number | null;
   last_payment_at?: string | null;
   last_payment_event_id?: string | null;
   last_subscription_status?: string | null;
@@ -39,28 +41,40 @@ export interface LicenseResponse {
   checkoutUrl: string;
   message: string;
   syncIntervalMs: number;
+  accessExpiresAt?: string | null;
 }
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function safeCredits(user: Pick<ExtensionUser, "credits_available"> | null | undefined): number {
-  return Math.max(0, Number(user?.credits_available || 0));
+function isFutureTimestamp(value: string | null | undefined, reference = new Date()): boolean {
+  if (!value) return false;
+  const expiresAt = new Date(value);
+  return Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() > reference.getTime();
+}
+
+function hasTimedAccess(user: ExtensionUser): boolean {
+  return isFutureTimestamp(user.access_expires_at);
+}
+
+function hasUnlimitedAccess(user: ExtensionUser): boolean {
+  return user.is_pro_user === true || hasTimedAccess(user);
 }
 
 function isAllowed(user: ExtensionUser): boolean {
-  return user.status === "active" && (user.is_pro_user || safeCredits(user) > 0);
+  return user.status === "active" && hasUnlimitedAccess(user);
 }
 
 function responseFor(user: ExtensionUser, message: string, checkoutUrl = ""): LicenseResponse {
   return {
     allowed: isAllowed(user),
-    credits: safeCredits(user),
-    isProUser: user.is_pro_user === true,
+    credits: 0,
+    isProUser: hasUnlimitedAccess(user),
     checkoutUrl,
     message,
     syncIntervalMs: licenseSyncIntervalMs(),
+    accessExpiresAt: user.access_expires_at || null,
   };
 }
 
@@ -78,9 +92,8 @@ function denied(message: string): LicenseResponse {
 function paymentMessage(user: ExtensionUser): string {
   if (user.status !== "active") return "User is disabled.";
   if (user.is_pro_user) return "Unlimited access active.";
-  const credits = safeCredits(user);
-  if (credits > 0) return `${credits} booking credit${credits === 1 ? "" : "s"} available.`;
-  return "No active credits. Buy credits to activate.";
+  if (hasTimedAccess(user)) return `30-day access active until ${new Date(user.access_expires_at || "").toISOString()}.`;
+  return "No active paid access. Buy access to activate bookings.";
 }
 
 function assertSupabase<T>(data: T, error: { message?: string } | null): T {
@@ -176,7 +189,21 @@ export async function createCheckout(productId: string, request: CheckoutRequest
     payment_customer_id: session.customerId || user.payment_customer_id || null,
     payment_subscription_id: session.subscriptionId || user.payment_subscription_id || null,
   });
-  return responseFor(updated, "Open checkout to buy credits.", session.checkoutUrl || "");
+  return responseFor(updated, "Open checkout to buy access.", session.checkoutUrl || "");
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + Math.max(0, days));
+  return next;
+}
+
+function extendedAccessExpiry(user: ExtensionUser, accessDays: number): string | null {
+  if (accessDays <= 0) return user.access_expires_at || null;
+  const now = new Date();
+  const currentExpiry = user.access_expires_at ? new Date(user.access_expires_at) : null;
+  const base = currentExpiry && Number.isFinite(currentExpiry.getTime()) && currentExpiry > now ? currentExpiry : now;
+  return addDays(base, accessDays).toISOString();
 }
 
 export async function recordUsage(productId: string, request: UsageRequest): Promise<LicenseResponse> {
@@ -186,36 +213,16 @@ export async function recordUsage(productId: string, request: UsageRequest): Pro
   if (!user) return denied("Amazon email is not registered for this extension.");
   if (user.status !== "active") return responseFor(user, "User is disabled.");
   if (user.last_booking_deduction_key === request.idempotencyKey) {
-    return responseFor(user, "Booking credit was already deducted for this booking.");
+    return responseFor(user, "Booking was already recorded for this access period.");
   }
-  if (user.is_pro_user) {
+  if (hasUnlimitedAccess(user)) {
     const updated = await updateUser(user.id, {
       last_booking_deduction_key: request.idempotencyKey,
       last_credit_deducted_at: new Date().toISOString(),
     });
-    return responseFor(updated, "Pro user booking recorded.");
+    return responseFor(updated, "Booking recorded for unlimited access.");
   }
-  if (safeCredits(user) <= 0) return responseFor(user, "No booking credits available.");
-
-  const { data, error } = await table(getSupabaseAdmin())
-    .update({
-      credits_available: safeCredits(user) - 1,
-      last_booking_deduction_key: request.idempotencyKey,
-      last_credit_deducted_at: new Date().toISOString(),
-    })
-    .eq("id", user.id)
-    .eq("credits_available", safeCredits(user))
-    .select("*")
-    .maybeSingle();
-  assertSupabase(data, error);
-  if (!data) {
-    const refreshed = await findUser(productId, amazonEmail);
-    if (refreshed?.last_booking_deduction_key === request.idempotencyKey) {
-      return responseFor(refreshed, "Booking credit was already deducted for this booking.");
-    }
-    return responseFor(user, "Unable to deduct booking credit. Please retry.");
-  }
-  return responseFor(data as ExtensionUser, "Booking credit deducted.");
+  return responseFor(user, "No active paid access. Buy access to continue booking.");
 }
 
 async function userForMetadata(metadata: PaymentMetadata): Promise<ExtensionUser | null> {
@@ -239,18 +246,19 @@ async function processPaymentSucceeded(event: PaymentWebhookEvent, metadata: Pay
     last_payment_status: "succeeded",
     last_payment_amount_cents: event.amountCents ?? null,
     last_payment_currency: event.currency || null,
-    last_payment_credits: purchase.credits,
+    last_payment_credits: 0,
+    last_payment_access_days: purchase.accessDays,
     last_payment_at: new Date().toISOString(),
     last_payment_event_id: event.eventId,
     status: "active",
+    credits_available: 0,
+    access_expires_at: extendedAccessExpiry(user, purchase.accessDays),
   };
   if (purchase.isPro) {
-    updates.is_pro_user = true;
-  } else {
-    updates.credits_available = safeCredits(user) + purchase.credits;
+    updates.last_subscription_status = event.subscriptionId ? "active" : user.last_subscription_status || null;
   }
   const updated = await updateUser(user.id, updates);
-  return responseFor(updated, purchase.isPro ? "Pro access activated." : `${purchase.credits} credits added.`);
+  return responseFor(updated, `${purchase.accessDays} days access added.`);
 }
 
 async function processRefundDisputeOrCancellation(event: PaymentWebhookEvent, metadata: PaymentMetadata): Promise<LicenseResponse> {

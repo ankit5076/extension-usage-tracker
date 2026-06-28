@@ -31,6 +31,23 @@ export function appUrl(): string {
   return optionalEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000").replace(/\/+$/, "");
 }
 
+export function normalizeBasePath(value: string): string {
+  const normalized = value.trim().replace(/^\/+/, "/").replace(/\/+$/, "");
+  if (!normalized || normalized === "/") return "";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+export function appBasePath(): string {
+  const explicitBasePath = optionalEnv("NEXT_PUBLIC_APP_BASE_PATH");
+  if (explicitBasePath) return normalizeBasePath(explicitBasePath);
+
+  try {
+    return normalizeBasePath(new URL(appUrl()).pathname);
+  } catch {
+    return "";
+  }
+}
+
 export function licenseSyncIntervalMs(): number {
   return numericEnv("LICENSE_SYNC_INTERVAL_MS", 900000);
 }

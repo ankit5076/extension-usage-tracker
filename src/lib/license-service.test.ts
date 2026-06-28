@@ -80,6 +80,7 @@ class Query {
         status: "active",
         credits_available: 0,
         is_pro_user: false,
+        access_expires_at: null,
       };
       this.rows.push(row);
     }
@@ -106,11 +107,13 @@ function row(overrides: Partial<Row> = {}): Row {
     status: "active",
     credits_available: 0,
     is_pro_user: false,
+    access_expires_at: null,
     ...overrides,
   };
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
   process.env.SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
   process.env.DODO_PAYMENTS_API_KEY = "dodo-key";
@@ -121,6 +124,7 @@ beforeEach(() => {
   process.env.DODO_PRODUCT_UK_CREDITS = "prod_uk_credits";
   process.env.DODO_PRODUCT_CANADA_CREDITS = "prod_ca_credits";
   process.env.DODO_PRODUCT_UK_PRO = "prod_uk_pro";
+  process.env.DODO_PRODUCT_CANADA_PRO = "prod_ca_pro";
   process.env.PADDLE_API_KEY = "paddle-key";
   process.env.PADDLE_WEBHOOK_SECRET = "paddle-webhook";
   process.env.PADDLE_ENVIRONMENT = "sandbox";
@@ -129,8 +133,12 @@ beforeEach(() => {
   process.env.PADDLE_PRICE_UK_PRO = "pri_uk_pro";
   process.env.SUPABASE_EXTENSION_SCHEMA = "extension_access";
   process.env.SUPABASE_EXTENSION_USERS_TABLE = "users";
-  process.env.UK_CREDITS_PER_PURCHASE = "3";
-  process.env.CANADA_CREDITS_PER_PURCHASE = "2";
+  process.env.ACCESS_DAYS_PER_PURCHASE = "30";
+  process.env.UK_ACCESS_DAYS_PER_PURCHASE = "30";
+  process.env.CANADA_ACCESS_DAYS_PER_PURCHASE = "30";
+  process.env.PRO_ACCESS_DAYS_PER_PURCHASE = "365";
+  process.env.UK_PRO_ACCESS_DAYS_PER_PURCHASE = "365";
+  process.env.CANADA_PRO_ACCESS_DAYS_PER_PURCHASE = "365";
   resetPaymentProvidersForTests();
   setDodoClientForTests(null);
   setPaddleClientForTests(null);
@@ -147,30 +155,35 @@ describe("license checks", () => {
     expect(response.message).toMatch(/not registered/);
   });
 
-  it("allows active credit and pro users", async () => {
+  it("allows active paid-access and pro users", async () => {
     const rows = [
-      row({ amazon_email_id: "credit@example.com", credits_available: 2 }),
+      row({ amazon_email_id: "access@example.com", access_expires_at: "2026-02-01T00:00:00.000Z" }),
       row({ amazon_email_id: "pro@example.com", credits_available: 0, is_pro_user: true }),
     ];
     setSupabaseAdminForTests(fakeSupabase(rows));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 
-    expect((await checkLicense("amazon-warehouse-jobs-uk", "credit@example.com")).allowed).toBe(true);
+    const access = await checkLicense("amazon-warehouse-jobs-uk", "access@example.com");
+    expect(access.allowed).toBe(true);
+    expect(access.isProUser).toBe(true);
+    expect(access.credits).toBe(0);
     expect((await checkLicense("amazon-warehouse-jobs-uk", "pro@example.com")).allowed).toBe(true);
   });
 
-  it("denies disabled users even when credits exist", async () => {
-    setSupabaseAdminForTests(fakeSupabase([row({ status: "disabled", credits_available: 5 })]));
+  it("denies disabled users even when access has not expired", async () => {
+    setSupabaseAdminForTests(fakeSupabase([row({ status: "disabled", access_expires_at: "2026-02-01T00:00:00.000Z" })]));
 
     const response = await checkLicense("amazon-warehouse-jobs-uk", "amazon@example.com");
 
     expect(response.allowed).toBe(false);
-    expect(response.credits).toBe(5);
+    expect(response.credits).toBe(0);
   });
 });
 
 describe("checkout", () => {
-  it("defaults to Dodo and creates or updates one row without resetting existing credits", async () => {
-    const rows = [row({ credits_available: 7 })];
+  it("defaults to Dodo and creates or updates one row without resetting existing access", async () => {
+    const rows = [row({ access_expires_at: "2026-02-01T00:00:00.000Z" })];
     setSupabaseAdminForTests(fakeSupabase(rows));
     const create = vi.fn(async () => ({
       session_id: "cs_123",
@@ -188,7 +201,7 @@ describe("checkout", () => {
 
     expect(response.checkoutUrl).toBe("https://checkout.dodo/session");
     expect(rows).toHaveLength(1);
-    expect(rows[0].credits_available).toBe(7);
+    expect(rows[0].access_expires_at).toBe("2026-02-01T00:00:00.000Z");
     expect(rows[0].payment_checkout_session_id).toBe("cs_123");
     expect(rows[0].payment_provider).toBe("dodo");
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -204,7 +217,7 @@ describe("checkout", () => {
   it("uses Paddle checkout through the same service method when configured", async () => {
     process.env.PAYMENT_PROVIDER = "paddle";
     resetPaymentProvidersForTests();
-    const rows = [row({ credits_available: 5 })];
+    const rows = [row({ access_expires_at: "2026-02-01T00:00:00.000Z" })];
     setSupabaseAdminForTests(fakeSupabase(rows));
     const create = vi.fn(async () => ({
       id: "txn_123",
@@ -222,7 +235,7 @@ describe("checkout", () => {
     });
 
     expect(response.checkoutUrl).toBe("https://checkout.paddle/txn_123");
-    expect(rows[0].credits_available).toBe(5);
+    expect(rows[0].access_expires_at).toBe("2026-02-01T00:00:00.000Z");
     expect(rows[0].payment_provider).toBe("paddle");
     expect(rows[0].payment_checkout_session_id).toBe("txn_123");
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -306,8 +319,10 @@ describe("webhooks", () => {
     });
   });
 
-  it("increments credits once for successful Dodo payment events", async () => {
-    const rows = [row({ credits_available: 1 })];
+  it("extends 30-day access once for successful Dodo payment events", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const rows = [row({ credits_available: 5, access_expires_at: null })];
     setSupabaseAdminForTests(fakeSupabase(rows));
     const event = {
       provider: "dodo" as const,
@@ -324,7 +339,9 @@ describe("webhooks", () => {
     await processPaymentWebhookEvent(event);
     await processPaymentWebhookEvent(event);
 
-    expect(rows[0].credits_available).toBe(4);
+    expect(rows[0].credits_available).toBe(0);
+    expect(rows[0].access_expires_at).toBe("2026-01-31T00:00:00.000Z");
+    expect(rows[0].last_payment_access_days).toBe(30);
     expect(rows[0].last_payment_event_id).toBe("payment.succeeded:pay_123");
     expect(rows[0].payment_provider).toBe("dodo");
   });
@@ -345,7 +362,7 @@ describe("webhooks", () => {
   });
 
   it("marks disputed rows as blocked and ignores events missing metadata", async () => {
-    const rows = [row({ credits_available: 1 })];
+    const rows = [row({ access_expires_at: "2026-02-01T00:00:00.000Z" })];
     setSupabaseAdminForTests(fakeSupabase(rows));
 
     const denied = await processPaymentWebhookEvent({
@@ -355,7 +372,7 @@ describe("webhooks", () => {
       metadata: null,
     });
     expect(denied.allowed).toBe(false);
-    expect(rows[0].credits_available).toBe(1);
+    expect(rows[0].access_expires_at).toBe("2026-02-01T00:00:00.000Z");
 
     await processPaymentWebhookEvent({
       provider: "paddle",
@@ -367,7 +384,9 @@ describe("webhooks", () => {
     expect(rows[0].status).toBe("blocked");
   });
 
-  it("activates pro users with zero credits", async () => {
+  it("activates annual pro access without permanent lifetime access", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const rows = [row({ credits_available: 0, is_pro_user: false })];
     setSupabaseAdminForTests(fakeSupabase(rows));
 
@@ -379,14 +398,18 @@ describe("webhooks", () => {
       metadata: { ...metadata, purchase_type: "pro" },
     });
 
-    expect(rows[0].is_pro_user).toBe(true);
+    expect(rows[0].is_pro_user).toBe(false);
     expect(rows[0].credits_available).toBe(0);
+    expect(rows[0].access_expires_at).toBe("2027-01-01T00:00:00.000Z");
+    expect(rows[0].last_payment_access_days).toBe(365);
   });
 
-  it("keeps Canada and UK credits separate for the same Amazon email", async () => {
+  it("keeps Canada and UK access separate for the same Amazon email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const rows = [
-      row({ product_id: "amazon-warehouse-jobs-uk", country: "UK", amazon_email_id: "same@example.com", credits_available: 0 }),
-      row({ product_id: "amazon-warehouse-jobs-canada", country: "CA", amazon_email_id: "same@example.com", credits_available: 0 }),
+      row({ product_id: "amazon-warehouse-jobs-uk", country: "UK", amazon_email_id: "same@example.com", access_expires_at: null }),
+      row({ product_id: "amazon-warehouse-jobs-canada", country: "CA", amazon_email_id: "same@example.com", access_expires_at: null }),
     ];
     setSupabaseAdminForTests(fakeSupabase(rows));
 
@@ -404,15 +427,17 @@ describe("webhooks", () => {
       },
     });
 
-    expect(rows.find(item => item.product_id === "amazon-warehouse-jobs-canada")?.credits_available).toBe(2);
-    expect(rows.find(item => item.product_id === "amazon-warehouse-jobs-uk")?.credits_available).toBe(0);
+    expect(rows.find(item => item.product_id === "amazon-warehouse-jobs-canada")?.access_expires_at).toBe("2026-01-31T00:00:00.000Z");
+    expect(rows.find(item => item.product_id === "amazon-warehouse-jobs-uk")?.access_expires_at).toBeNull();
   });
 });
 
 describe("usage", () => {
-  it("deducts one credit after booking success and ignores duplicate keys", async () => {
-    const rows = [row({ credits_available: 2 })];
+  it("records booking success for active paid access without deducting credits", async () => {
+    const rows = [row({ credits_available: 0, access_expires_at: "2026-02-01T00:00:00.000Z" })];
     setSupabaseAdminForTests(fakeSupabase(rows));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const request = {
       amazonEmailId: "amazon@example.com",
       idempotencyKey: "booking-1",
@@ -422,8 +447,25 @@ describe("usage", () => {
     await recordUsage("amazon-warehouse-jobs-uk", request);
     await recordUsage("amazon-warehouse-jobs-uk", request);
 
-    expect(rows[0].credits_available).toBe(1);
+    expect(rows[0].credits_available).toBe(0);
     expect(rows[0].last_booking_deduction_key).toBe("booking-1");
+  });
+
+  it("denies booking usage when paid access has expired", async () => {
+    const rows = [row({ credits_available: 5, access_expires_at: "2025-12-31T23:59:59.000Z" })];
+    setSupabaseAdminForTests(fakeSupabase(rows));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    const response = await recordUsage("amazon-warehouse-jobs-uk", {
+      amazonEmailId: "amazon@example.com",
+      idempotencyKey: "booking-expired",
+      metadata: {},
+    });
+
+    expect(response.allowed).toBe(false);
+    expect(rows[0].credits_available).toBe(5);
+    expect(rows[0].last_booking_deduction_key).toBeUndefined();
   });
 
   it("records pro usage without deducting credits", async () => {
