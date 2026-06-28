@@ -149,6 +149,50 @@ input {
   line-height: 1.4;
 }
 
+.home-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.home-panel {
+  width: min(100%, 560px);
+  padding: 28px;
+  background: #ffffff;
+  border: 1px solid #d7dce3;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(17, 24, 39, 0.12);
+}
+
+.home-panel h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.home-links {
+  display: grid;
+  gap: 10px;
+}
+
+.home-links a {
+  display: block;
+  padding: 12px 14px;
+  color: #064e3b;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.home-links a:hover {
+  border-color: #047857;
+}
+
 @media (max-width: 520px) {
   .checkout-plans {
     grid-template-columns: 1fr;
