@@ -237,6 +237,7 @@ describe("checkout", () => {
         expect.objectContaining({
           key: "amazon_email_id",
           field_type: "email",
+          label: "Amazon job-search email - this Amazon Jobs account will receive this access",
           required: true,
         }),
       ],

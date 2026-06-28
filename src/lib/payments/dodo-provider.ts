@@ -143,7 +143,7 @@ export class DodoPaymentProvider implements PaymentProvider {
         {
           field_type: "email",
           key: "amazon_email_id",
-          label: "Amazon job-search email",
+          label: "Amazon job-search email - this Amazon Jobs account will receive this access",
           placeholder: "amazon@example.com",
           required: true,
         },
