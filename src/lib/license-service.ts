@@ -13,7 +13,6 @@ export interface ExtensionUser {
   email_id: string;
   amazon_email_id: string;
   status: "active" | "disabled" | "refunded" | "blocked";
-  credits_available: number;
   is_pro_user: boolean;
   access_expires_at?: string | null;
   payment_provider?: string | null;
@@ -24,19 +23,17 @@ export interface ExtensionUser {
   last_payment_status?: string | null;
   last_payment_amount_cents?: number | null;
   last_payment_currency?: string | null;
-  last_payment_credits?: number | null;
   last_payment_access_days?: number | null;
   last_payment_at?: string | null;
   last_payment_event_id?: string | null;
   last_subscription_status?: string | null;
-  last_booking_deduction_key?: string | null;
-  last_credit_deducted_at?: string | null;
+  last_booking_usage_key?: string | null;
+  last_booking_recorded_at?: string | null;
   license_checked_at?: string | null;
 }
 
 export interface LicenseResponse {
   allowed: boolean;
-  credits: number;
   isProUser: boolean;
   checkoutUrl: string;
   message: string;
@@ -69,7 +66,6 @@ function isAllowed(user: ExtensionUser): boolean {
 function responseFor(user: ExtensionUser, message: string, checkoutUrl = ""): LicenseResponse {
   return {
     allowed: isAllowed(user),
-    credits: 0,
     isProUser: hasUnlimitedAccess(user),
     checkoutUrl,
     message,
@@ -81,7 +77,6 @@ function responseFor(user: ExtensionUser, message: string, checkoutUrl = ""): Li
 function denied(message: string): LicenseResponse {
   return {
     allowed: false,
-    credits: 0,
     isProUser: false,
     checkoutUrl: "",
     message,
@@ -212,15 +207,15 @@ export async function recordUsage(productId: string, request: UsageRequest): Pro
   const user = await findUser(productId, amazonEmail);
   if (!user) return denied("Amazon email is not registered for this extension.");
   if (user.status !== "active") return responseFor(user, "User is disabled.");
-  if (user.last_booking_deduction_key === request.idempotencyKey) {
+  if (user.last_booking_usage_key === request.idempotencyKey) {
     return responseFor(user, "Booking was already recorded for this access period.");
   }
   if (hasUnlimitedAccess(user)) {
     const updated = await updateUser(user.id, {
-      last_booking_deduction_key: request.idempotencyKey,
-      last_credit_deducted_at: new Date().toISOString(),
+      last_booking_usage_key: request.idempotencyKey,
+      last_booking_recorded_at: new Date().toISOString(),
     });
-    return responseFor(updated, "Booking recorded for unlimited access.");
+    return responseFor(updated, "Booking recorded for paid access.");
   }
   return responseFor(user, "No active paid access. Buy access to continue booking.");
 }
@@ -246,12 +241,10 @@ async function processPaymentSucceeded(event: PaymentWebhookEvent, metadata: Pay
     last_payment_status: "succeeded",
     last_payment_amount_cents: event.amountCents ?? null,
     last_payment_currency: event.currency || null,
-    last_payment_credits: 0,
     last_payment_access_days: purchase.accessDays,
     last_payment_at: new Date().toISOString(),
     last_payment_event_id: event.eventId,
     status: "active",
-    credits_available: 0,
     access_expires_at: extendedAccessExpiry(user, purchase.accessDays),
   };
   if (purchase.isPro) {

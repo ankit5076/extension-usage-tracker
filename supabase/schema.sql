@@ -12,7 +12,6 @@ create table if not exists extension_access.users (
   email_id text not null,
   amazon_email_id text not null,
   status text not null default 'active',
-  credits_available integer not null default 0,
   is_pro_user boolean not null default false,
   access_expires_at timestamptz,
   payment_provider text not null default 'dodo',
@@ -23,18 +22,16 @@ create table if not exists extension_access.users (
   last_payment_status text,
   last_payment_amount_cents integer,
   last_payment_currency text,
-  last_payment_credits integer,
   last_payment_access_days integer,
   last_payment_at timestamptz,
   last_payment_event_id text,
   last_subscription_status text,
-  last_booking_deduction_key text,
-  last_credit_deducted_at timestamptz,
+  last_booking_usage_key text,
+  last_booking_recorded_at timestamptz,
   license_checked_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (product_id, amazon_email_id),
-  check (credits_available >= 0),
   check (status in ('active', 'disabled', 'refunded', 'blocked'))
 );
 

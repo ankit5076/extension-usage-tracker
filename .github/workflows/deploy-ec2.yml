@@ -40,17 +40,21 @@ jobs:
       DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'test_mode' }}
       DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
       DODO_PAYMENTS_WEBHOOK_KEY: ${{ secrets.DODO_PAYMENTS_WEBHOOK_KEY }}
-      DODO_PRODUCT_CANADA_CREDITS: ${{ vars.DODO_PRODUCT_CANADA_CREDITS || 'pdt_0Nhu9jdAB46VLQgwpPydJ' }}
-      DODO_PRODUCT_UK_CREDITS: ${{ vars.DODO_PRODUCT_UK_CREDITS || 'pdt_0Nhu9t8c32547wyNEtZTe' }}
+      DODO_PRODUCT_CANADA_ACCESS: ${{ vars.DODO_PRODUCT_CANADA_ACCESS || 'pdt_0Nhu9jdAB46VLQgwpPydJ' }}
+      DODO_PRODUCT_UK_ACCESS: ${{ vars.DODO_PRODUCT_UK_ACCESS || 'pdt_0Nhu9t8c32547wyNEtZTe' }}
       DODO_PRODUCT_CANADA_PRO: ${{ vars.DODO_PRODUCT_CANADA_PRO }}
       DODO_PRODUCT_UK_PRO: ${{ vars.DODO_PRODUCT_UK_PRO }}
-      CANADA_CREDITS_PER_PURCHASE: ${{ vars.CANADA_CREDITS_PER_PURCHASE || '5' }}
-      UK_CREDITS_PER_PURCHASE: ${{ vars.UK_CREDITS_PER_PURCHASE || '5' }}
+      ACCESS_DAYS_PER_PURCHASE: ${{ vars.ACCESS_DAYS_PER_PURCHASE || '30' }}
+      CANADA_ACCESS_DAYS_PER_PURCHASE: ${{ vars.CANADA_ACCESS_DAYS_PER_PURCHASE || '30' }}
+      UK_ACCESS_DAYS_PER_PURCHASE: ${{ vars.UK_ACCESS_DAYS_PER_PURCHASE || '30' }}
+      PRO_ACCESS_DAYS_PER_PURCHASE: ${{ vars.PRO_ACCESS_DAYS_PER_PURCHASE || '365' }}
+      CANADA_PRO_ACCESS_DAYS_PER_PURCHASE: ${{ vars.CANADA_PRO_ACCESS_DAYS_PER_PURCHASE || '365' }}
+      UK_PRO_ACCESS_DAYS_PER_PURCHASE: ${{ vars.UK_PRO_ACCESS_DAYS_PER_PURCHASE || '365' }}
       PADDLE_ENVIRONMENT: ${{ vars.PADDLE_ENVIRONMENT || 'sandbox' }}
       PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
       PADDLE_WEBHOOK_SECRET: ${{ secrets.PADDLE_WEBHOOK_SECRET }}
-      PADDLE_PRICE_CANADA_CREDITS: ${{ vars.PADDLE_PRICE_CANADA_CREDITS }}
-      PADDLE_PRICE_UK_CREDITS: ${{ vars.PADDLE_PRICE_UK_CREDITS }}
+      PADDLE_PRICE_CANADA_ACCESS: ${{ vars.PADDLE_PRICE_CANADA_ACCESS }}
+      PADDLE_PRICE_UK_ACCESS: ${{ vars.PADDLE_PRICE_UK_ACCESS }}
       PADDLE_PRICE_CANADA_PRO: ${{ vars.PADDLE_PRICE_CANADA_PRO }}
       PADDLE_PRICE_UK_PRO: ${{ vars.PADDLE_PRICE_UK_PRO }}
 
@@ -88,7 +92,7 @@ jobs:
 
           case "${PAYMENT_PROVIDER}" in
             dodo)
-              for name in DODO_PAYMENTS_API_KEY DODO_PAYMENTS_WEBHOOK_KEY DODO_PRODUCT_CANADA_CREDITS DODO_PRODUCT_UK_CREDITS; do
+              for name in DODO_PAYMENTS_API_KEY DODO_PAYMENTS_WEBHOOK_KEY DODO_PRODUCT_CANADA_ACCESS DODO_PRODUCT_UK_ACCESS; do
                 if [ -z "${!name}" ]; then
                   echo "::error::Missing required Dodo deployment value ${name}."
                   missing=1
@@ -96,7 +100,7 @@ jobs:
               done
               ;;
             paddle)
-              for name in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_PRICE_CANADA_CREDITS PADDLE_PRICE_UK_CREDITS; do
+              for name in PADDLE_API_KEY PADDLE_WEBHOOK_SECRET PADDLE_PRICE_CANADA_ACCESS PADDLE_PRICE_UK_ACCESS; do
                 if [ -z "${!name}" ]; then
                   echo "::error::Missing required Paddle deployment value ${name}."
                   missing=1

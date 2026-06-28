@@ -2,7 +2,7 @@
   "name": "extension-usage-tracker",
   "version": "0.2.0",
   "private": true,
-  "description": "Next.js API service for provider-backed public extension credits.",
+  "description": "Next.js API service for provider-backed public extension access.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

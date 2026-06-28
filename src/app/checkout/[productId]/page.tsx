@@ -16,7 +16,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const product = productConfig(productId);
   if (!product) notFound();
   const plan = query.purchaseType || query.plan;
-  const initialPurchaseType = plan === "pro" ? "pro" : "credits";
+  const initialPurchaseType = plan === "pro" ? "pro" : "access";
 
   return (
     <CheckoutForm

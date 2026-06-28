@@ -6,7 +6,7 @@ type CheckoutFormProps = {
   productId: string;
   extensionName: string;
   country: string;
-  initialPurchaseType?: "credits" | "pro";
+  initialPurchaseType?: "access" | "pro";
   apiBasePath?: string;
 };
 
@@ -24,12 +24,12 @@ export function CheckoutForm({
   productId,
   extensionName,
   country,
-  initialPurchaseType = "credits",
+  initialPurchaseType = "access",
   apiBasePath = "",
 }: CheckoutFormProps) {
   const [emailId, setEmailId] = useState("");
   const [amazonEmailId, setAmazonEmailId] = useState("");
-  const [purchaseType, setPurchaseType] = useState<"credits" | "pro">(initialPurchaseType);
+  const [purchaseType, setPurchaseType] = useState<"access" | "pro">(initialPurchaseType);
   const [error, setError] = useState("");
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -68,10 +68,10 @@ export function CheckoutForm({
         </p>
         <div className="checkout-plans" role="radiogroup" aria-label="Choose access plan">
           <button
-            className={purchaseType === "credits" ? "checkout-plan selected" : "checkout-plan"}
+            className={purchaseType === "access" ? "checkout-plan selected" : "checkout-plan"}
             type="button"
-            onClick={() => setPurchaseType("credits")}
-            aria-pressed={purchaseType === "credits"}
+            onClick={() => setPurchaseType("access")}
+            aria-pressed={purchaseType === "access"}
           >
             <span className="checkout-plan-name">30-Day Access</span>
             <strong>$50</strong>

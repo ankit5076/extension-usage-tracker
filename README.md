@@ -26,10 +26,10 @@ Extension responses keep this shape:
 ```json
 {
   "allowed": true,
-  "credits": 5,
   "isProUser": false,
+  "accessExpiresAt": "2026-01-31T00:00:00.000Z",
   "checkoutUrl": "",
-  "message": "5 booking credits available.",
+  "message": "30-day access active until 2026-01-31T00:00:00.000Z.",
   "syncIntervalMs": 900000
 }
 ```
@@ -52,11 +52,11 @@ Each checkout session includes metadata:
   "country": "CA",
   "email_id": "buyer@example.com",
   "amazon_email_id": "amazon@example.com",
-  "purchase_type": "credits"
+  "purchase_type": "access"
 }
 ```
 
-Dodo uses hosted checkout sessions and Dodo webhook verification. Paddle uses transaction checkout URLs and `Paddle-Signature` verification through `@paddle/paddle-node-sdk`. Payment success increments credits once using `last_payment_event_id`; refund/dispute events mark the row as `refunded` or `blocked`.
+Dodo uses hosted checkout sessions and Dodo webhook verification. Paddle uses transaction checkout URLs and `Paddle-Signature` verification through `@paddle/paddle-node-sdk`. Payment success extends access once using `last_payment_event_id`; refund/dispute events mark the row as `refunded` or `blocked`.
 
 The legacy Dodo webhook route remains available at `/api/dodo/webhook`; new provider-specific webhooks live at `/api/payments/dodo/webhook` and `/api/payments/paddle/webhook`.
 
@@ -78,10 +78,10 @@ PADDLE_WEBHOOK_SECRET
 PADDLE_ENVIRONMENT
 NEXT_PUBLIC_APP_URL
 NEXT_PUBLIC_APP_BASE_PATH
-DODO_PRODUCT_CANADA_CREDITS
-DODO_PRODUCT_UK_CREDITS
-PADDLE_PRICE_CANADA_CREDITS
-PADDLE_PRICE_UK_CREDITS
+DODO_PRODUCT_CANADA_ACCESS
+DODO_PRODUCT_UK_ACCESS
+PADDLE_PRICE_CANADA_ACCESS
+PADDLE_PRICE_UK_ACCESS
 ```
 
 Optional pro products:
@@ -139,7 +139,7 @@ Dodo webhook URL:
 https://getslotnow.com/extension-usage-tracker/api/payments/dodo/webhook
 ```
 
-The workflow has defaults for the current EC2 host, Supabase project, Dodo product ids, and 5-credit pack sizing. Set repository variables only when overriding those defaults:
+The workflow has defaults for the current EC2 host, Supabase project, Dodo product ids, and access window sizing. Set repository variables only when overriding those defaults:
 
 ```text
 AWS_ACCOUNT_ID
@@ -156,12 +156,16 @@ SUPABASE_EXTENSION_USERS_TABLE
 PAYMENT_PROVIDER
 LICENSE_SYNC_INTERVAL_MS
 DODO_PAYMENTS_ENVIRONMENT
-DODO_PRODUCT_CANADA_CREDITS
-DODO_PRODUCT_UK_CREDITS
+DODO_PRODUCT_CANADA_ACCESS
+DODO_PRODUCT_UK_ACCESS
 DODO_PRODUCT_CANADA_PRO
 DODO_PRODUCT_UK_PRO
-CANADA_CREDITS_PER_PURCHASE
-UK_CREDITS_PER_PURCHASE
+ACCESS_DAYS_PER_PURCHASE
+CANADA_ACCESS_DAYS_PER_PURCHASE
+UK_ACCESS_DAYS_PER_PURCHASE
+PRO_ACCESS_DAYS_PER_PURCHASE
+CANADA_PRO_ACCESS_DAYS_PER_PURCHASE
+UK_PRO_ACCESS_DAYS_PER_PURCHASE
 EXTENSION_USAGE_TRACKER_PUBLIC_PATH
 EXTENSION_USAGE_TRACKER_ECR_REPOSITORY
 ```

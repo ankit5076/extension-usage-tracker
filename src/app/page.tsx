@@ -14,9 +14,9 @@ export default function HomePage() {
           Choose the payment page for the Amazon warehouse jobs extension you want to activate.
         </p>
         <div className="home-links">
-          <a href={href("/checkout/amazon-warehouse-jobs-canada?plan=credits")}>Canada 30-Day Access</a>
+          <a href={href("/checkout/amazon-warehouse-jobs-canada?plan=access")}>Canada 30-Day Access</a>
           <a href={href("/checkout/amazon-warehouse-jobs-canada?plan=pro")}>Canada Pro Annual</a>
-          <a href={href("/checkout/amazon-warehouse-jobs-uk?plan=credits")}>UK 30-Day Access</a>
+          <a href={href("/checkout/amazon-warehouse-jobs-uk?plan=access")}>UK 30-Day Access</a>
           <a href={href("/checkout/amazon-warehouse-jobs-uk?plan=pro")}>UK Pro Annual</a>
         </div>
       </section>

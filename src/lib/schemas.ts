@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 const email = z.string().trim().toLowerCase().email();
+const purchaseType = z.enum(["access", "pro"]).default("access");
 
 export const CheckoutRequestSchema = z.object({
   emailId: email,
   amazonEmailId: email,
-  purchaseType: z.enum(["credits", "pro"]).default("credits"),
+  purchaseType,
 });
 
 export const UsageRequestSchema = z.object({
@@ -22,7 +23,7 @@ export const PaymentMetadataSchema = z.object({
   country: z.string().trim().min(1),
   email_id: email,
   amazon_email_id: email,
-  purchase_type: z.enum(["credits", "pro"]).default("credits"),
+  purchase_type: purchaseType,
 });
 
 export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
