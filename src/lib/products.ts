@@ -84,3 +84,17 @@ export function purchaseConfig(
     isPro: purchaseType === "pro",
   };
 }
+
+export function availablePlans(productId: string, providerId: PaymentProviderId = "dodo") {
+  const product = requireProduct(productId);
+  const accessProductId = providerId === "paddle" ? product.paddleAccessPriceId : product.dodoAccessProductId;
+  const proProductId = providerId === "paddle" ? product.paddleProPriceId : product.dodoProProductId;
+  return {
+    productId: product.productId,
+    provider: providerId,
+    plans: {
+      access: Boolean(accessProductId),
+      pro: Boolean(proProductId),
+    },
+  };
+}
