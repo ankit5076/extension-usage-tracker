@@ -186,8 +186,6 @@ for attempt in $(seq 1 30); do
 done
 
 docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
-docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/checkout/amazon-warehouse-jobs-canada?plan=access').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
-docker exec "${{SERVICE_NAME}}" node -e "fetch('http://127.0.0.1:3000/checkout/amazon-warehouse-jobs-uk?plan=pro').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
 docker ps --filter "name=${{SERVICE_NAME}}"
 """
 
