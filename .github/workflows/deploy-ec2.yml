@@ -37,13 +37,13 @@ jobs:
       SUPABASE_EXTENSION_USERS_TABLE: ${{ vars.SUPABASE_EXTENSION_USERS_TABLE || 'users' }}
       PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'dodo' }}
       LICENSE_SYNC_INTERVAL_MS: ${{ vars.LICENSE_SYNC_INTERVAL_MS || '900000' }}
-      DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'test_mode' }}
+      DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'live_mode' }}
       DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
       DODO_PAYMENTS_WEBHOOK_KEY: ${{ secrets.DODO_PAYMENTS_WEBHOOK_KEY }}
-      DODO_PRODUCT_CANADA_ACCESS: ${{ vars.DODO_PRODUCT_CANADA_ACCESS || 'pdt_0Nhu9jdAB46VLQgwpPydJ' }}
-      DODO_PRODUCT_UK_ACCESS: ${{ vars.DODO_PRODUCT_UK_ACCESS || 'pdt_0Nhu9t8c32547wyNEtZTe' }}
-      DODO_PRODUCT_CANADA_PRO: ${{ vars.DODO_PRODUCT_CANADA_PRO || 'pdt_0Ni2OQ7AGdkjHhhXCTeTP' }}
-      DODO_PRODUCT_UK_PRO: ${{ vars.DODO_PRODUCT_UK_PRO || 'pdt_0Ni2Od3UyR7VZfLQjPNOD' }}
+      DODO_PRODUCT_CANADA_ACCESS: ${{ vars.DODO_PRODUCT_CANADA_ACCESS }}
+      DODO_PRODUCT_UK_ACCESS: ${{ vars.DODO_PRODUCT_UK_ACCESS }}
+      DODO_PRODUCT_CANADA_PRO: ${{ vars.DODO_PRODUCT_CANADA_PRO }}
+      DODO_PRODUCT_UK_PRO: ${{ vars.DODO_PRODUCT_UK_PRO }}
       ACCESS_DAYS_PER_PURCHASE: ${{ vars.ACCESS_DAYS_PER_PURCHASE || '30' }}
       CANADA_ACCESS_DAYS_PER_PURCHASE: ${{ vars.CANADA_ACCESS_DAYS_PER_PURCHASE || '30' }}
       UK_ACCESS_DAYS_PER_PURCHASE: ${{ vars.UK_ACCESS_DAYS_PER_PURCHASE || '30' }}
@@ -92,7 +92,11 @@ jobs:
 
           case "${PAYMENT_PROVIDER}" in
             dodo)
-              for name in DODO_PAYMENTS_API_KEY DODO_PAYMENTS_WEBHOOK_KEY DODO_PRODUCT_CANADA_ACCESS DODO_PRODUCT_UK_ACCESS; do
+              if [ "${DODO_PAYMENTS_ENVIRONMENT}" != "live_mode" ]; then
+                echo "::error::Production DODO_PAYMENTS_ENVIRONMENT must be live_mode."
+                missing=1
+              fi
+              for name in DODO_PAYMENTS_API_KEY DODO_PAYMENTS_WEBHOOK_KEY DODO_PRODUCT_CANADA_ACCESS DODO_PRODUCT_UK_ACCESS DODO_PRODUCT_CANADA_PRO DODO_PRODUCT_UK_PRO; do
                 if [ -z "${!name}" ]; then
                   echo "::error::Missing required Dodo deployment value ${name}."
                   missing=1
