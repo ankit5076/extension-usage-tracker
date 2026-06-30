@@ -9,7 +9,7 @@ interface RouteContext {
 }
 
 function isPaymentProviderId(value: string): value is PaymentProviderId {
-  return value === "dodo" || value === "paddle";
+  return value === "dodo" || value === "paddle" || value === "razorpay";
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {

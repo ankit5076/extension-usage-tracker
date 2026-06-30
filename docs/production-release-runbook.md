@@ -6,7 +6,7 @@ This runbook covers the production path for the Canada and UK Amazon warehouse j
 - `amazon-warehouse-jobs-uk`
 - shared backend: `extension-usage-tracker`
 
-Canada and UK are released as separate Chrome Web Store listings. They share the same backend, Supabase schema, and Dodo payment strategy.
+Canada and UK are released as separate Chrome Web Store listings. They share the same backend, Supabase schema, and Razorpay Payment Links payment strategy.
 
 ## Current Status
 
@@ -19,15 +19,16 @@ As of June 29, 2026:
 - Chrome Web Store asset packs are prepared in both extension repos.
 - Privacy and support pages are implemented in the tracker and must be deployed before the Web Store listing URLs are submitted.
 - Trusted-tester release is intentionally skipped. The release target is direct public Chrome Web Store submission.
-- Public submission is still blocked until the production backend returns live Dodo checkout URLs instead of `test.checkout.dodopayments.com`.
+- Public submission is still blocked until the production backend returns live Razorpay Payment Link checkout URLs.
 
 ## Official References
 
 - Chrome Web Store publishing: <https://developer.chrome.com/docs/webstore/publish/>
 - Chrome Web Store developer dashboard: <https://chrome.google.com/webstore/devconsole>
 - Chrome extension quality guidelines: <https://developer.chrome.com/docs/webstore/program-policies/quality-guidelines-faq>
-- Dodo Payments docs: <https://docs.dodopayments.com/>
-- Dodo checkout integration guide: <https://docs.dodopayments.com/developer-resources/integration-guide>
+- Razorpay Payment Links API: <https://razorpay.com/docs/api/payments/payment-links/create-standard/>
+- Razorpay webhook validation: <https://razorpay.com/docs/webhooks/validate-test/>
+- Razorpay Payment Links webhook payloads: <https://razorpay.com/docs/webhooks/payment-links/>
 - Supabase API security: <https://supabase.com/docs/guides/api/securing-your-api>
 
 ## Release Stages
@@ -35,7 +36,7 @@ As of June 29, 2026:
 1. Code readiness - done
 2. Backend readiness - done
 3. Supabase readiness - done
-4. Dodo live-mode setup - pending
+4. Razorpay live setup - pending
 5. Extension build and package - done
 6. Chrome Web Store listing setup - asset pack done, dashboard upload pending
 7. Trusted-tester release - skipped by decision
@@ -55,10 +56,10 @@ The release is blocked until every gate below is true:
 - UK README and release notes no longer describe the extension as local-only.
 - No customer-facing text mentions old booking counts, credit packs, or "5 bookings".
 - Popup shows both payment choices: 30-day access and annual/pro access.
-- Backend production deploy uses `DODO_PAYMENTS_ENVIRONMENT=live_mode`.
-- Backend production deploy uses live Dodo API keys, live webhook secret, and live product IDs.
-- Production checkout smoke tests return live Dodo checkout URLs, not `test.checkout.dodopayments.com`.
-- Dodo webhook URL is configured and verified.
+- Backend production deploy uses `PAYMENT_PROVIDER=razorpay`.
+- Backend production deploy uses live Razorpay API keys, live webhook secret, currency, and plan amount variables.
+- Production checkout smoke tests return live Razorpay Payment Link checkout URLs.
+- Razorpay webhook URL is configured and verified.
 - Supabase table exists under `extension_access.users`, not `public.extension_users`.
 - Supabase RLS is enabled and browser clients have no direct table access.
 - Chrome Web Store privacy, permission, payment, and reviewer-instruction fields are complete.
@@ -85,6 +86,7 @@ GET  /api/{productId}/license/plans
 POST /api/{productId}/license/checkout
 POST /api/{productId}/license/usage
 POST /api/payments/dodo/webhook
+POST /api/payments/razorpay/webhook
 POST /api/dodo/webhook
 ```
 
@@ -177,13 +179,13 @@ NEXT_PUBLIC_APP_BASE_PATH=/extension-usage-tracker
 SUPABASE_URL=<existing Supabase project URL>
 SUPABASE_EXTENSION_SCHEMA=extension_access
 SUPABASE_EXTENSION_USERS_TABLE=users
-PAYMENT_PROVIDER=dodo
+PAYMENT_PROVIDER=razorpay
 LICENSE_SYNC_INTERVAL_MS=900000
-DODO_PAYMENTS_ENVIRONMENT=live_mode
-DODO_PRODUCT_CANADA_ACCESS=<live Canada 30-day Dodo product id>
-DODO_PRODUCT_UK_ACCESS=<live UK 30-day Dodo product id>
-DODO_PRODUCT_CANADA_PRO=<live Canada annual Dodo product id>
-DODO_PRODUCT_UK_PRO=<live UK annual Dodo product id>
+RAZORPAY_CURRENCY=INR
+RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS=5000
+RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS=5000
+RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS=12000
+RAZORPAY_UK_PRO_AMOUNT_SUBUNITS=12000
 ACCESS_DAYS_PER_PURCHASE=30
 CANADA_ACCESS_DAYS_PER_PURCHASE=30
 UK_ACCESS_DAYS_PER_PURCHASE=30
@@ -201,8 +203,9 @@ Set these under Settings -> Secrets and variables -> Actions -> Repository secre
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
-DODO_PAYMENTS_API_KEY
-DODO_PAYMENTS_WEBHOOK_KEY
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
 ```
 
 Never put these values in `.env.example`, source code, screenshots, or support messages.
@@ -222,7 +225,7 @@ Expected `/license/plans` shape:
 ```json
 {
   "productId": "amazon-warehouse-jobs-canada",
-  "provider": "dodo",
+  "provider": "razorpay",
   "plans": {
     "access": true,
     "pro": true
@@ -244,13 +247,13 @@ curl -i -X POST \
   --data '{"emailId":"buyer@example.com","amazonEmailId":"amazon@example.com","purchaseType":"pro"}'
 ```
 
-Repeat for `amazon-warehouse-jobs-uk`. Each response must return a Dodo hosted checkout URL.
+Repeat for `amazon-warehouse-jobs-uk`. Each response must return a Razorpay hosted Payment Link checkout URL.
 
 Current blocker:
 
 ```text
-The latest checkout smoke test returned test.checkout.dodopayments.com.
-Do not submit publicly until the deployed backend returns live Dodo checkout URLs.
+The earlier Dodo checkout smoke test returned test.checkout.dodopayments.com.
+Do not submit publicly until the deployed backend is switched to Razorpay and returns live Razorpay Payment Link checkout URLs.
 ```
 
 ## Supabase Readiness
@@ -295,57 +298,82 @@ order by grantee, privilege_type;
 
 Expected user-row behavior:
 
-- A successful Dodo payment creates or updates one row for `product_id + amazon_email_id`.
+- A successful Razorpay payment creates or updates one row for `product_id + amazon_email_id`.
 - 30-day access sets a future `access_expires_at`.
-- Annual/pro access sets `is_pro_user=true` and a future `access_expires_at`.
+- Annual/pro access sets a 365-day future `access_expires_at`.
 - Refund or dispute marks the row as `refunded` or `blocked`.
 - Duplicate webhook events do not extend access twice.
 - Duplicate booking usage events do not record usage twice.
 
-## Dodo Live-Mode Setup
+## Razorpay Live Setup
 
-Dodo test-mode products are for development only. Production launch requires live-mode products, live API key, and live webhook secret.
+Production launch requires Razorpay API keys, a live webhook secret, and configured plan amounts in the smallest currency unit.
 
 Current status:
 
-- Pending: confirm live Dodo products, API key, webhook key, and live product IDs are set in GitHub Actions.
-- Pending: redeploy `extension-usage-tracker` after live-mode variables/secrets are configured.
-- Pending: rerun checkout smoke tests and confirm the returned checkout host is live, not `test.checkout.dodopayments.com`.
+- Pending: confirm Razorpay API key, webhook secret, currency, and plan amount variables are set in GitHub Actions.
+- Pending: redeploy `extension-usage-tracker` after Razorpay variables/secrets are configured.
+- Pending: rerun checkout smoke tests and confirm the returned checkout host is Razorpay.
 
-### Products
+### Payment Link Amounts
 
-Create or copy these four live products:
+Configure these four plan amount variables:
 
-| Product | Price | Access |
-| --- | ---: | --- |
-| Amazon Warehouse Jobs Canada - 30-Day Access | $50 | 30 days |
-| Amazon Warehouse Jobs UK - 30-Day Access | $50 | 30 days |
-| Amazon Warehouse Jobs Canada - Annual Access | $120 | 365 days |
-| Amazon Warehouse Jobs UK - Annual Access | $120 | 365 days |
+| Variable | Access |
+| --- | --- |
+| `RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS=5000` | Canada 30 days, $50 |
+| `RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS=5000` | UK 30 days, $50 |
+| `RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS=12000` | Canada 365 days, $120 |
+| `RAZORPAY_UK_PRO_AMOUNT_SUBUNITS=12000` | UK 365 days, $120 |
 
-For each product:
+Amounts are passed to Razorpay as subunits. For the current Razorpay test-mode deployment, `INR` values are paise. Switch to USD cents only after Razorpay enables USD/international Payment Links for the account.
 
-- Use one-time payment unless the business decision changes to a subscription later.
-- Keep product names clear and country-specific.
-- Add the Additional Information field for Amazon job-search email.
-- Use this description for the Amazon email field:
+### API Keys
+
+Create Razorpay API keys in the dashboard:
 
 ```text
-This Amazon Jobs account will receive this access.
+Account & Settings -> API Keys -> Generate Key
 ```
+
+Store the values as GitHub Actions repository secrets:
+
+```text
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+```
+
+Use test-mode keys for the first smoke test. Repeat with live-mode keys after Razorpay account activation is ready for public payments.
 
 ### Webhook
 
-Configure this Dodo webhook URL:
+Configure Razorpay webhooks in the dashboard:
 
 ```text
-https://getslotnow.com/extension-usage-tracker/api/payments/dodo/webhook
+Account & Settings -> Webhooks
+```
+
+Webhook URL:
+
+```text
+https://getslotnow.com/extension-usage-tracker/api/payments/razorpay/webhook
+```
+
+Required events:
+
+```text
+payment_link.paid
+payment_link.cancelled
+payment_link.expired
+payment.failed
+refund.processed
+refund.created
 ```
 
 Store the signing secret as:
 
 ```text
-DODO_PAYMENTS_WEBHOOK_KEY
+RAZORPAY_WEBHOOK_SECRET
 ```
 
 Required webhook verification:
@@ -387,7 +415,7 @@ Test each extension from a fresh Chrome profile or after removing all extension 
 - Open valid Canada Amazon job-search page.
 - Confirm popup asks for buyer email and Amazon job-search email.
 - Confirm both 30-day and annual/pro payment options are visible.
-- Start checkout for 30-day access and confirm it opens Dodo directly.
+- Start checkout for 30-day access and confirm it opens Razorpay Payment Link checkout directly.
 - Complete payment using the live public-payment method.
 - Confirm license check returns allowed for the Amazon email.
 - Confirm job polling only runs on the job-search page.
@@ -402,7 +430,7 @@ Test each extension from a fresh Chrome profile or after removing all extension 
 - Open valid UK Amazon job-search page.
 - Confirm popup asks for buyer email and Amazon job-search email.
 - Confirm both 30-day and annual/pro payment options are visible.
-- Start checkout for 30-day access and confirm it opens Dodo directly.
+- Start checkout for 30-day access and confirm it opens Razorpay Payment Link checkout directly.
 - Complete payment using the live public-payment method.
 - Confirm license check returns allowed for the Amazon email.
 - Confirm job polling only runs on the job-search page.
@@ -479,7 +507,7 @@ Complete the privacy tab honestly:
 - The extension communicates with `getslotnow.com` for license checks, checkout creation, and access validation.
 - The extension does not sell user data.
 - The extension does not call Supabase directly.
-- Payment is handled by Dodo hosted checkout.
+- Payment is handled by Razorpay hosted Payment Link checkout.
 
 Permission justification template:
 
@@ -498,7 +526,7 @@ Amazon hiring host permissions are required because the extension operates only 
 If the Chrome Web Store dashboard asks about paid features or in-app purchases, disclose that:
 
 - The extension requires paid access.
-- Payment checkout is hosted by Dodo.
+- Payment checkout is hosted by Razorpay.
 - The extension supports 30-day access and annual/pro access.
 - Access is tied to the Amazon job-search email entered during checkout.
 
@@ -515,11 +543,11 @@ Test flow:
 3. Open a supported Amazon hiring job-search page.
 4. Enter a buyer email and Amazon job-search email.
 5. Choose either 30-day access or annual/pro access.
-6. The extension opens Dodo hosted checkout.
+6. The extension opens Razorpay hosted Payment Link checkout.
 7. After payment, return to the Amazon job-search page and activate the extension.
 8. The extension checks paid access through https://getslotnow.com/extension-usage-tracker and only proceeds when access is valid.
 
-Payment is handled by Dodo hosted checkout. Supabase is used only by the backend service and is never called directly by the extension.
+Payment is handled by Razorpay hosted Payment Link checkout. Supabase is used only by the backend service and is never called directly by the extension.
 ```
 
 For this release, reviewer instructions should describe live checkout behavior. Do not reference a trusted-tester or test-mode checkout path in the public submission.
@@ -532,7 +560,7 @@ Because trusted testers are skipped, complete these checks before public submiss
 
 - Install both extensions locally from the packaged `1.0.0` zips.
 - Run the manual test matrix above.
-- Confirm live Dodo checkout creates or updates rows in `extension_access.users`.
+- Confirm live Razorpay checkout creates or updates rows in `extension_access.users`.
 - Confirm unpaid, expired, refunded, and blocked users are denied.
 - Confirm no old booking-count or credit-pack language appears anywhere in the extension or checkout.
 - Confirm no unexpected navigation happens before valid access.
@@ -543,10 +571,10 @@ Launch directly as public after all hard release gates pass.
 
 Before submission:
 
-- Confirm `DODO_PAYMENTS_ENVIRONMENT=live_mode`.
-- Confirm Dodo product IDs are live-mode IDs.
-- Confirm checkout URLs use live Dodo checkout, not `test.checkout.dodopayments.com`.
-- Confirm webhook event delivery succeeds in Dodo dashboard.
+- Confirm `PAYMENT_PROVIDER=razorpay`.
+- Confirm Razorpay API keys, webhook secret, currency, and amount variables are configured.
+- Confirm checkout URLs use live Razorpay Payment Link checkout.
+- Confirm webhook event delivery succeeds in Razorpay dashboard.
 - Confirm `/api/health` passes.
 - Confirm `/license/plans` shows both plans for both products.
 - Confirm Chrome Web Store listings use final descriptions, screenshots, privacy answers, and support links.
@@ -573,8 +601,8 @@ During the first 48 hours, check:
 - GitHub Actions deployment status.
 - EC2 container health.
 - `https://getslotnow.com/extension-usage-tracker/api/health`.
-- Dodo checkout success rate.
-- Dodo webhook delivery failures.
+- Razorpay checkout success rate.
+- Razorpay webhook delivery failures.
 - Supabase `extension_access.users` row creation/update behavior.
 - Customer support messages about payment, activation, Amazon email mismatch, and country mismatch.
 - Chrome Web Store review or policy messages.
@@ -607,9 +635,9 @@ Extension rollback options:
 - Keep the previous approved Web Store version active while the new version is under review.
 - If the issue is severe, unpublish or restrict visibility until fixed.
 
-Dodo rollback options:
+Razorpay rollback options:
 
-- Disable the affected live product.
+- Disable or rotate the affected Payment Link/API setup.
 - Rotate webhook/API secrets if exposed.
 - Refund affected users and mark their rows consistently in `extension_access.users`.
 
@@ -621,7 +649,7 @@ Release:
 - UK extension version:
 - Backend commit:
 - Backend deployment run:
-- Dodo mode: live_mode
+- Payment provider: razorpay
 - Supabase schema: extension_access.users
 - Chrome listing visibility: public
 
@@ -636,7 +664,7 @@ Backend checks:
 - Canada annual/pro checkout host is live:
 - UK access checkout host is live:
 - UK annual/pro checkout host is live:
-- Dodo webhook delivery verified:
+- Razorpay webhook delivery verified:
 
 Extension checks:
 - Canada npm test/build/verify/package:

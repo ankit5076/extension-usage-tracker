@@ -1,12 +1,15 @@
 import { paymentProviderId } from "../config";
 import { DodoPaymentProvider } from "./dodo-provider";
 import { PaddlePaymentProvider } from "./paddle-provider";
+import { RazorpayPaymentProvider } from "./razorpay-provider";
 import type { PaymentProvider, PaymentProviderId } from "./types";
 
 const providers = new Map<PaymentProviderId, PaymentProvider>();
 
 function createProvider(providerId: PaymentProviderId): PaymentProvider {
-  return providerId === "paddle" ? new PaddlePaymentProvider() : new DodoPaymentProvider();
+  if (providerId === "paddle") return new PaddlePaymentProvider();
+  if (providerId === "razorpay") return new RazorpayPaymentProvider();
+  return new DodoPaymentProvider();
 }
 
 export function getPaymentProvider(providerId: PaymentProviderId): PaymentProvider {

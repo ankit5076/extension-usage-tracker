@@ -35,8 +35,16 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_EXTENSION_SCHEMA: ${{ vars.SUPABASE_EXTENSION_SCHEMA || 'extension_access' }}
       SUPABASE_EXTENSION_USERS_TABLE: ${{ vars.SUPABASE_EXTENSION_USERS_TABLE || 'users' }}
-      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'dodo' }}
+      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'razorpay' }}
       LICENSE_SYNC_INTERVAL_MS: ${{ vars.LICENSE_SYNC_INTERVAL_MS || '900000' }}
+      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+      RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+      RAZORPAY_CURRENCY: ${{ vars.RAZORPAY_CURRENCY || 'INR' }}
+      RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS: ${{ vars.RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS || '5000' }}
+      RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS: ${{ vars.RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS || '5000' }}
+      RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS: ${{ vars.RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS || '12000' }}
+      RAZORPAY_UK_PRO_AMOUNT_SUBUNITS: ${{ vars.RAZORPAY_UK_PRO_AMOUNT_SUBUNITS || '12000' }}
       DODO_PAYMENTS_ENVIRONMENT: ${{ vars.DODO_PAYMENTS_ENVIRONMENT || 'live_mode' }}
       DODO_PAYMENTS_API_KEY: ${{ secrets.DODO_PAYMENTS_API_KEY }}
       DODO_PAYMENTS_WEBHOOK_KEY: ${{ secrets.DODO_PAYMENTS_WEBHOOK_KEY }}
@@ -111,8 +119,24 @@ jobs:
                 fi
               done
               ;;
+            razorpay)
+              for name in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET RAZORPAY_CURRENCY RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS RAZORPAY_UK_PRO_AMOUNT_SUBUNITS; do
+                if [ -z "${!name}" ]; then
+                  echo "::error::Missing required Razorpay deployment value ${name}."
+                  missing=1
+                fi
+              done
+              for name in RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS RAZORPAY_UK_PRO_AMOUNT_SUBUNITS; do
+                case "${!name}" in
+                  ''|*[!0-9]*|0)
+                    echo "::error::${name} must be a positive integer in the smallest currency unit."
+                    missing=1
+                    ;;
+                esac
+              done
+              ;;
             *)
-              echo "::error::PAYMENT_PROVIDER must be dodo or paddle."
+              echo "::error::PAYMENT_PROVIDER must be dodo, paddle, or razorpay."
               missing=1
               ;;
           esac

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { appBasePath, normalizeBasePath } from "./config";
+import { appBasePath, normalizeBasePath, paymentProviderId, razorpayCurrency } from "./config";
 
 const originalEnv = { ...process.env };
 
@@ -26,5 +26,13 @@ describe("public app path", () => {
     process.env.NEXT_PUBLIC_APP_BASE_PATH = "/custom-prefix/";
 
     expect(appBasePath()).toBe("/custom-prefix");
+  });
+
+  it("accepts Razorpay as a payment provider and uppercases its currency", () => {
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    process.env.RAZORPAY_CURRENCY = "usd";
+
+    expect(paymentProviderId()).toBe("razorpay");
+    expect(razorpayCurrency()).toBe("USD");
   });
 });

@@ -1,7 +1,7 @@
 import type { ProductConfig, PurchaseConfig } from "../products";
 import type { PaymentMetadata } from "../schemas";
 
-export type PaymentProviderId = "dodo" | "paddle";
+export type PaymentProviderId = "dodo" | "paddle" | "razorpay";
 
 export interface CreateCheckoutInput {
   product: ProductConfig;

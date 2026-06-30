@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const EnvironmentSchema = z.enum(["test_mode", "live_mode"]).default("test_mode");
-const PaymentProviderSchema = z.enum(["dodo", "paddle"]).default("dodo");
+const PaymentProviderSchema = z.enum(["dodo", "paddle", "razorpay"]).default("dodo");
 const PaddleEnvironmentSchema = z.enum(["sandbox", "production"]).default("sandbox");
 
 export type DodoEnvironment = z.infer<typeof EnvironmentSchema>;
@@ -70,6 +70,10 @@ export function paymentProviderId(): PaymentProviderId {
 
 export function paddleEnvironment(): PaddleEnvironment {
   return PaddleEnvironmentSchema.parse(optionalEnv("PADDLE_ENVIRONMENT", "sandbox"));
+}
+
+export function razorpayCurrency(): string {
+  return optionalEnv("RAZORPAY_CURRENCY", "USD").toUpperCase();
 }
 
 export function allowedExtensionOrigins(): string[] {

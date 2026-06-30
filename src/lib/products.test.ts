@@ -6,6 +6,8 @@ beforeEach(() => {
   delete process.env.DODO_PRODUCT_UK_PRO;
   process.env.PADDLE_PRICE_UK_ACCESS = "pri_uk_access";
   process.env.PADDLE_PRICE_UK_PRO = "pri_uk_pro";
+  process.env.RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS = "5000";
+  process.env.RAZORPAY_UK_PRO_AMOUNT_SUBUNITS = "0";
 });
 
 describe("product plan availability", () => {
@@ -25,6 +27,15 @@ describe("product plan availability", () => {
       plans: {
         access: true,
         pro: true,
+      },
+    });
+
+    expect(availablePlans("amazon-warehouse-jobs-uk", "razorpay")).toEqual({
+      productId: "amazon-warehouse-jobs-uk",
+      provider: "razorpay",
+      plans: {
+        access: true,
+        pro: false,
       },
     });
   });

@@ -11,15 +11,39 @@ DEPLOY_INSTANCE_TAG_NAME=get-slot-now-prod
 NEXT_PUBLIC_APP_URL=https://getslotnow.com/extension-usage-tracker
 ```
 
+## Required GitHub Variables
+
+Add these in `ankit5076/extension-usage-tracker` under Settings -> Secrets and variables -> Actions -> Variables:
+
+```text
+PAYMENT_PROVIDER=razorpay
+RAZORPAY_CURRENCY=INR
+RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS=5000
+RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS=12000
+RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS=5000
+RAZORPAY_UK_PRO_AMOUNT_SUBUNITS=12000
+```
+
+For the test-mode Razorpay deployment, use `RAZORPAY_CURRENCY=INR` with amounts in paise. The checked-in workflow defaults are `5000` and `12000` for INR test Payment Links. Switch these variables to USD cents only after Razorpay enables USD/international Payment Links for the account.
+
 ## Required GitHub Secrets
 
 Add these in `ankit5076/extension-usage-tracker` under Settings -> Secrets and variables -> Actions -> Repository secrets:
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
-DODO_PAYMENTS_API_KEY
-DODO_PAYMENTS_WEBHOOK_KEY
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
 ```
+
+Create the Razorpay key pair from the Razorpay dashboard:
+
+```text
+Account & Settings -> API Keys -> Generate Key
+```
+
+Use test-mode keys for the first deployment smoke test. Repeat with live-mode keys after Razorpay account activation is ready for public payments. Razorpay shows the key secret only once, so store it directly in GitHub Actions secrets and do not commit it to source control.
 
 After those are set, rerun:
 
@@ -27,19 +51,38 @@ After those are set, rerun:
 https://github.com/ankit5076/extension-usage-tracker/actions/workflows/deploy-ec2.yml
 ```
 
-## Dodo Webhook
+## Razorpay Webhook
 
-Configure Dodo to send events to:
-
-```text
-https://getslotnow.com/extension-usage-tracker/api/payments/dodo/webhook
-```
-
-Store the Dodo webhook signing secret as:
+Configure Razorpay from the dashboard:
 
 ```text
-DODO_PAYMENTS_WEBHOOK_KEY
+Account & Settings -> Webhooks
 ```
+
+Webhook URL:
+
+```text
+https://getslotnow.com/extension-usage-tracker/api/payments/razorpay/webhook
+```
+
+Subscribe to these events:
+
+```text
+payment_link.paid
+payment_link.cancelled
+payment_link.expired
+payment.failed
+refund.processed
+refund.created
+```
+
+Store the Razorpay webhook signing secret in GitHub Actions as:
+
+```text
+RAZORPAY_WEBHOOK_SECRET
+```
+
+Use the same webhook secret in Razorpay and in the backend environment. Start with a test-mode webhook, verify delivery, then repeat the webhook setup in live mode before Chrome Web Store public submission.
 
 ## AWS IAM Updates
 

@@ -1,6 +1,6 @@
 # Extension Usage Tracker
 
-Next.js API service for paid access to the Canada and UK Amazon warehouse job extensions. Dodo is the default payment provider, and Paddle is available behind the same provider interface.
+Next.js API service for paid access to the Canada and UK Amazon warehouse job extensions. Razorpay Payment Links are the production payment path, with Dodo and Paddle still available behind the same provider interface.
 
 ## Endpoints
 
@@ -10,6 +10,7 @@ POST /api/{productId}/license/checkout
 POST /api/{productId}/license/usage
 POST /api/payments/dodo/webhook
 POST /api/payments/paddle/webhook
+POST /api/payments/razorpay/webhook
 POST /api/dodo/webhook
 GET  /checkout/success
 ```
@@ -42,7 +43,7 @@ The schema enables RLS, revokes schema/table access from `anon` and `authenticat
 
 ## Payments
 
-Checkout goes through `src/lib/payments/PaymentProvider`. Set `PAYMENT_PROVIDER=dodo` or `PAYMENT_PROVIDER=paddle`; the extension API and response shape do not change.
+Checkout goes through `src/lib/payments/PaymentProvider`. Set `PAYMENT_PROVIDER=razorpay`, `PAYMENT_PROVIDER=dodo`, or `PAYMENT_PROVIDER=paddle`; the extension API and response shape do not change.
 
 Each checkout session includes metadata:
 
@@ -56,9 +57,9 @@ Each checkout session includes metadata:
 }
 ```
 
-Dodo uses hosted checkout sessions and Dodo webhook verification. Paddle uses transaction checkout URLs and `Paddle-Signature` verification through `@paddle/paddle-node-sdk`. Payment success extends access once using `last_payment_event_id`; refund/dispute events mark the row as `refunded` or `blocked`.
+Razorpay creates hosted Payment Links and verifies webhooks with `X-Razorpay-Signature`. Dodo uses hosted checkout sessions and Dodo webhook verification. Paddle uses transaction checkout URLs and `Paddle-Signature` verification through `@paddle/paddle-node-sdk`. Payment success extends access once using `last_payment_event_id`; refund/dispute events mark the row as `refunded` or `blocked`.
 
-The legacy Dodo webhook route remains available at `/api/dodo/webhook`; new provider-specific webhooks live at `/api/payments/dodo/webhook` and `/api/payments/paddle/webhook`.
+The legacy Dodo webhook route remains available at `/api/dodo/webhook`; provider-specific webhooks live at `/api/payments/dodo/webhook`, `/api/payments/paddle/webhook`, and `/api/payments/razorpay/webhook`.
 
 ## Configuration
 
@@ -76,13 +77,21 @@ DODO_PAYMENTS_ENVIRONMENT
 PADDLE_API_KEY
 PADDLE_WEBHOOK_SECRET
 PADDLE_ENVIRONMENT
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
+RAZORPAY_CURRENCY
 NEXT_PUBLIC_APP_URL
 NEXT_PUBLIC_APP_BASE_PATH
 DODO_PRODUCT_CANADA_ACCESS
 DODO_PRODUCT_UK_ACCESS
 PADDLE_PRICE_CANADA_ACCESS
 PADDLE_PRICE_UK_ACCESS
+RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS
+RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS
 ```
+
+Only the active provider's secrets and product/amount variables are required at runtime. For production Razorpay, set `PAYMENT_PROVIDER=razorpay` with the `RAZORPAY_*` variables.
 
 Optional pro products:
 
@@ -91,6 +100,8 @@ DODO_PRODUCT_CANADA_PRO
 DODO_PRODUCT_UK_PRO
 PADDLE_PRICE_CANADA_PRO
 PADDLE_PRICE_UK_PRO
+RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS
+RAZORPAY_UK_PRO_AMOUNT_SUBUNITS
 ```
 
 ## Local Development
@@ -133,13 +144,13 @@ Default public backend URL:
 https://getslotnow.com/extension-usage-tracker
 ```
 
-Dodo webhook URL:
+Razorpay webhook URL:
 
 ```text
-https://getslotnow.com/extension-usage-tracker/api/payments/dodo/webhook
+https://getslotnow.com/extension-usage-tracker/api/payments/razorpay/webhook
 ```
 
-The workflow has defaults for the current EC2 host, Supabase project, Dodo product ids, and access window sizing. Set repository variables only when overriding those defaults:
+The workflow has defaults for the current EC2 host, Supabase project, legacy Dodo product ids, and access window sizing. Set repository variables only when overriding those defaults:
 
 ```text
 AWS_ACCOUNT_ID
@@ -155,6 +166,11 @@ SUPABASE_EXTENSION_SCHEMA
 SUPABASE_EXTENSION_USERS_TABLE
 PAYMENT_PROVIDER
 LICENSE_SYNC_INTERVAL_MS
+RAZORPAY_CURRENCY
+RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS
+RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS
+RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS
+RAZORPAY_UK_PRO_AMOUNT_SUBUNITS
 DODO_PAYMENTS_ENVIRONMENT
 DODO_PRODUCT_CANADA_ACCESS
 DODO_PRODUCT_UK_ACCESS
@@ -170,10 +186,18 @@ EXTENSION_USAGE_TRACKER_PUBLIC_PATH
 EXTENSION_USAGE_TRACKER_ECR_REPOSITORY
 ```
 
-Required GitHub repository secrets for Dodo deployment:
+Required GitHub repository secrets for Razorpay deployment:
 
 ```text
 SUPABASE_SERVICE_ROLE_KEY
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_WEBHOOK_SECRET
+```
+
+Only set these Dodo secrets if `PAYMENT_PROVIDER=dodo`:
+
+```text
 DODO_PAYMENTS_API_KEY
 DODO_PAYMENTS_WEBHOOK_KEY
 ```
@@ -198,4 +222,4 @@ The GitHub deploy role and EC2 instance role also need ECR push/pull permissions
 arn:aws:ecr:<AWS_REGION>:<AWS_ACCOUNT_ID>:repository/extension-usage-tracker
 ```
 
-See `docs/release-setup.md` for the exact remaining GitHub secrets, Dodo webhook URL, and AWS IAM additions.
+See `docs/release-setup.md` for the exact remaining GitHub secrets, Razorpay webhook URL, and AWS IAM additions.

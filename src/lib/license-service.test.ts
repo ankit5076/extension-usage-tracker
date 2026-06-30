@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   checkLicense,
@@ -9,6 +10,7 @@ import {
 } from "./license-service";
 import { normalizeDodoWebhookEvent, setDodoClientForTests } from "./payments/dodo-provider";
 import { normalizePaddleWebhookEvent, setPaddleClientForTests } from "./payments/paddle-provider";
+import { normalizeRazorpayWebhookEvent, setRazorpayFetchForTests } from "./payments/razorpay-provider";
 import { defaultPaymentProvider, resetPaymentProvidersForTests, setPaymentProviderForTests } from "./payments/registry";
 import type { PaymentProvider } from "./payments/types";
 import { setSupabaseAdminForTests } from "./supabase-admin";
@@ -129,6 +131,14 @@ beforeEach(() => {
   process.env.PADDLE_PRICE_UK_ACCESS = "pri_uk_access";
   process.env.PADDLE_PRICE_CANADA_ACCESS = "pri_ca_access";
   process.env.PADDLE_PRICE_UK_PRO = "pri_uk_pro";
+  process.env.RAZORPAY_KEY_ID = "rzp_test_key";
+  process.env.RAZORPAY_KEY_SECRET = "rzp_secret";
+  process.env.RAZORPAY_WEBHOOK_SECRET = "rzp_webhook_secret";
+  process.env.RAZORPAY_CURRENCY = "USD";
+  process.env.RAZORPAY_UK_ACCESS_AMOUNT_SUBUNITS = "5000";
+  process.env.RAZORPAY_UK_PRO_AMOUNT_SUBUNITS = "12000";
+  process.env.RAZORPAY_CANADA_ACCESS_AMOUNT_SUBUNITS = "5000";
+  process.env.RAZORPAY_CANADA_PRO_AMOUNT_SUBUNITS = "12000";
   process.env.SUPABASE_EXTENSION_SCHEMA = "extension_access";
   process.env.SUPABASE_EXTENSION_USERS_TABLE = "users";
   process.env.ACCESS_DAYS_PER_PURCHASE = "30";
@@ -140,6 +150,7 @@ beforeEach(() => {
   resetPaymentProvidersForTests();
   setDodoClientForTests(null);
   setPaddleClientForTests(null);
+  setRazorpayFetchForTests(null);
   setSupabaseAdminForTests(null);
 });
 
@@ -281,6 +292,56 @@ describe("checkout", () => {
     }));
   });
 
+  it("uses Razorpay Payment Links through the same service method when configured", async () => {
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    resetPaymentProvidersForTests();
+    const rows = [row({ access_expires_at: "2026-02-01T00:00:00.000Z" })];
+    setSupabaseAdminForTests(fakeSupabase(rows));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: "plink_123",
+        short_url: "https://rzp.io/rzp/abc123",
+      }),
+    } as Response));
+    setRazorpayFetchForTests(fetchMock as typeof fetch);
+
+    expect(defaultPaymentProvider().id).toBe("razorpay");
+    const response = await createCheckout("amazon-warehouse-jobs-uk", {
+      emailId: "Buyer@Example.com",
+      amazonEmailId: "Amazon@Example.com",
+      purchaseType: "access",
+    });
+
+    expect(response.checkoutUrl).toBe("https://rzp.io/rzp/abc123");
+    expect(rows[0].payment_provider).toBe("razorpay");
+    expect(rows[0].payment_checkout_session_id).toBe("plink_123");
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({
+      Authorization: expect.stringMatching(/^Basic /),
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      amount: 5000,
+      currency: "USD",
+      accept_partial: false,
+      callback_url: "https://tracker.example.com/checkout/success",
+      callback_method: "get",
+      customer: {
+        email: "buyer@example.com",
+        name: "buyer@example.com",
+      },
+      notes: {
+        product_id: "amazon-warehouse-jobs-uk",
+        email_id: "buyer@example.com",
+        amazon_email_id: "amazon@example.com",
+        purchase_type: "access",
+      },
+    });
+  });
+
   it("routes subscription helpers through the configured provider", async () => {
     process.env.PAYMENT_PROVIDER = "paddle";
     resetPaymentProvidersForTests();
@@ -313,7 +374,7 @@ describe("webhooks", () => {
     purchase_type: "access" as const,
   };
 
-  it("normalizes Dodo and Paddle successful payment events", () => {
+  it("normalizes Dodo, Paddle, and Razorpay successful payment events", () => {
     expect(normalizeDodoWebhookEvent({
       type: "payment.succeeded",
       timestamp: "2026-01-01T00:00:00Z",
@@ -352,9 +413,45 @@ describe("webhooks", () => {
       paymentId: "txn_123",
       metadata,
     });
+
+    expect(normalizeRazorpayWebhookEvent({
+      event: "payment_link.paid",
+      created_at: 1767225600,
+      payload: {
+        payment_link: {
+          entity: {
+            id: "plink_123",
+            amount: 5000,
+            amount_paid: 5000,
+            currency: "USD",
+            notes: metadata,
+            customer: { email: "buyer@example.com" },
+          },
+        },
+        payment: {
+          entity: {
+            id: "pay_123",
+            amount: 5000,
+            currency: "USD",
+            email: "buyer@example.com",
+            customer_id: "cust_123",
+          },
+        },
+      },
+    }, "evt_rzp_123")).toMatchObject({
+      provider: "razorpay",
+      type: "payment_succeeded",
+      eventId: "evt_rzp_123",
+      paymentId: "pay_123",
+      checkoutSessionId: "plink_123",
+      customerEmail: "buyer@example.com",
+      amountCents: 5000,
+      currency: "USD",
+      metadata,
+    });
   });
 
-  it("extends 30-day access once for successful Dodo payment events", async () => {
+  it("extends 30-day access once for successful Razorpay payment events", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const rows = [row({ access_expires_at: null })];
@@ -413,6 +510,77 @@ describe("webhooks", () => {
       payment_checkout_session_id: "cs_direct",
       payment_customer_id: "cus_direct",
     });
+  });
+
+  it("verifies Razorpay webhooks and extends access only once", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const rows = [row({ access_expires_at: null })];
+    setSupabaseAdminForTests(fakeSupabase(rows));
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    resetPaymentProvidersForTests();
+    const body = JSON.stringify({
+      event: "payment_link.paid",
+      created_at: 1767225600,
+      payload: {
+        payment_link: {
+          entity: {
+            id: "plink_123",
+            amount: 5000,
+            amount_paid: 5000,
+            currency: "USD",
+            notes: metadata,
+            customer: { email: "buyer@example.com" },
+          },
+        },
+        payment: {
+          entity: {
+            id: "pay_123",
+            amount: 5000,
+            currency: "USD",
+            email: "buyer@example.com",
+            customer_id: "cust_123",
+          },
+        },
+      },
+    });
+    const signature = createHmac("sha256", String(process.env.RAZORPAY_WEBHOOK_SECRET)).update(body).digest("hex");
+    const request = () => new Request("https://tracker.example.com/api/payments/razorpay/webhook", {
+      method: "POST",
+      headers: {
+        "X-Razorpay-Signature": signature,
+        "x-razorpay-event-id": "evt_rzp_123",
+      },
+      body,
+    });
+
+    await processPaymentWebhookEvent(await defaultPaymentProvider().verifyWebhook(request()));
+    await processPaymentWebhookEvent(await defaultPaymentProvider().verifyWebhook(request()));
+
+    expect(rows[0]).toMatchObject({
+      access_expires_at: "2026-01-31T00:00:00.000Z",
+      last_payment_access_days: 30,
+      last_payment_event_id: "evt_rzp_123",
+      payment_provider: "razorpay",
+      payment_id: "pay_123",
+      payment_checkout_session_id: "plink_123",
+      payment_customer_id: "cust_123",
+      last_payment_amount_cents: 5000,
+      last_payment_currency: "USD",
+    });
+  });
+
+  it("rejects Razorpay webhooks with an invalid signature", async () => {
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    resetPaymentProvidersForTests();
+
+    await expect(defaultPaymentProvider().verifyWebhook(new Request("https://tracker.example.com/api/payments/razorpay/webhook", {
+      method: "POST",
+      headers: {
+        "X-Razorpay-Signature": "bad-signature",
+      },
+      body: JSON.stringify({ event: "payment_link.paid" }),
+    }))).rejects.toThrow(/Invalid Razorpay webhook signature/);
   });
 
   it("marks refunded rows as refunded", async () => {
